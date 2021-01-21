@@ -1,0 +1,2 @@
+/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ar qc libjson.a  CMakeFiles/json.dir/cJSON/cJSON.c.obj CMakeFiles/json.dir/cJSON/cJSON_Utils.c.obj CMakeFiles/json.dir/cJSON/test.c.obj
+/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ranlib libjson.a

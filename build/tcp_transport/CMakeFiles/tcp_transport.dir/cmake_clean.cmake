@@ -1,0 +1,14 @@
+file(REMOVE_RECURSE
+  "CMakeFiles/tcp_transport.dir/transport.c.obj"
+  "CMakeFiles/tcp_transport.dir/transport_ssl.c.obj"
+  "CMakeFiles/tcp_transport.dir/transport_tcp.c.obj"
+  "CMakeFiles/tcp_transport.dir/transport_ws.c.obj"
+  "CMakeFiles/tcp_transport.dir/transport_utils.c.obj"
+  "libtcp_transport.pdb"
+  "libtcp_transport.a"
+)
+
+# Per-language clean rules from dependency scanning.
+foreach(lang C)
+  include(CMakeFiles/tcp_transport.dir/cmake_clean_${lang}.cmake OPTIONAL)
+endforeach()

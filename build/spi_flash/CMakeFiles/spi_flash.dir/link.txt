@@ -1,0 +1,2 @@
+/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ar qc libspi_flash.a  CMakeFiles/spi_flash.dir/cache_utils.c.obj CMakeFiles/spi_flash.dir/flash_mmap.c.obj CMakeFiles/spi_flash.dir/flash_ops.c.obj CMakeFiles/spi_flash.dir/partition.c.obj CMakeFiles/spi_flash.dir/spi_flash_rom_patch.c.obj
+/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ranlib libspi_flash.a

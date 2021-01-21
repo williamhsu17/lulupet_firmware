@@ -1,0 +1,2 @@
+/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ar qc libtcp_transport.a  CMakeFiles/tcp_transport.dir/transport.c.obj CMakeFiles/tcp_transport.dir/transport_ssl.c.obj CMakeFiles/tcp_transport.dir/transport_tcp.c.obj CMakeFiles/tcp_transport.dir/transport_ws.c.obj CMakeFiles/tcp_transport.dir/transport_utils.c.obj
+/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ranlib libtcp_transport.a

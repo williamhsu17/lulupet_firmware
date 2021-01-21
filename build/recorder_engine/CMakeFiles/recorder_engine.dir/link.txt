@@ -1,0 +1,2 @@
+/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ar qc librecorder_engine.a  CMakeFiles/recorder_engine.dir/a.c.obj
+/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ranlib librecorder_engine.a

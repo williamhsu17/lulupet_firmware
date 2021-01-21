@@ -1,0 +1,2 @@
+/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ar qc libpthread.a  CMakeFiles/pthread.dir/pthread.c.obj CMakeFiles/pthread.dir/pthread_cond_var.c.obj CMakeFiles/pthread.dir/pthread_local_storage.c.obj
+/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ranlib libpthread.a

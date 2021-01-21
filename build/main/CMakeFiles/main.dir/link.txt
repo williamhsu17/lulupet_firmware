@@ -1,0 +1,2 @@
+/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ar qc libmain.a  CMakeFiles/main.dir/app_main.c.obj CMakeFiles/main.dir/app_wifi.c.obj CMakeFiles/main.dir/app_camera.c.obj CMakeFiles/main.dir/app_httpd.c.obj CMakeFiles/main.dir/__/index_ov2640.html.gz.S.obj CMakeFiles/main.dir/__/index_ov3660.html.gz.S.obj
+/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ranlib libmain.a

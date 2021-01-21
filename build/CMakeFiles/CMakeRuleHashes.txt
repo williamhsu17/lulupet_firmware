@@ -1,0 +1,10 @@
+# Hashes of file build rules.
+6452410fda97642a3cc9b58bfe82fe70 CMakeFiles/mconf-idf-complete
+99f0e0665cca7ebd1f18b8c334617a43 dummy_main_src.c
+42b34189f2b02312b976be9d2ce0439e mconf-idf-prefix/src/mconf-idf-stamp/mconf-idf-build
+e04d1c4cc7fc5d7369c58155dc46c708 mconf-idf-prefix/src/mconf-idf-stamp/mconf-idf-configure
+3fb240008bcf3a18e70cf2043b276d7b mconf-idf-prefix/src/mconf-idf-stamp/mconf-idf-download
+df07bc3220404be480e5f4c6108c7c93 mconf-idf-prefix/src/mconf-idf-stamp/mconf-idf-install
+9eefee4973844b9cda8f52c459f26d7b mconf-idf-prefix/src/mconf-idf-stamp/mconf-idf-mkdir
+03ec8e6f2b90b4c5bc276b073726fff2 mconf-idf-prefix/src/mconf-idf-stamp/mconf-idf-patch
+0ced1da165ead6ace7546024afc49e7f mconf-idf-prefix/src/mconf-idf-stamp/mconf-idf-update
