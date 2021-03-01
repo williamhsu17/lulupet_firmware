@@ -262,8 +262,8 @@ char urlbuffer[100];
 /* lulupet API id and token */
 char lulupet_lid[10] = "lid118";
 char lulupet_token[10] = "WebLid118";
-char lulupet_lid_get[20];
-char lulupet_token_get[180];
+char lulupet_lid_get[100];
+char lulupet_token_get[100];
 
 extern const char howsmyssl_com_root_cert_pem_start[] asm("_binary_lulupet_com_root_cert_pem_start");
 extern const char howsmyssl_com_root_cert_pem_end[]   asm("_binary_lulupet_com_root_cert_pem_end");
@@ -953,10 +953,14 @@ static void example_event_callback(esp_blufi_cb_event_t event, esp_blufi_cb_para
         break;
     }
     case ESP_BLUFI_EVENT_RECV_CUSTOM_DATA:
-        BLUFI_INFO("Recv Custom Data %d\n", param->custom_data.data_len);
+        BLUFI_INFO("Recv Custom Data len = %d, limit 200 \n", param->custom_data.data_len);
         //esp_log_buffer_hex("Custom Data", param->custom_data.data, param->custom_data.data_len);
         char *custimdataBuffer = malloc(200);
         sprintf(custimdataBuffer,"%s",param->custom_data.data);
+
+        custimdataBuffer[param->custom_data.data_len] = 0 ;
+        ESP_LOGI(TAG, "@@ %s \n", custimdataBuffer) ;   
+
         cJSON *pJsonRoot = cJSON_Parse(custimdataBuffer);
 		if(NULL != pJsonRoot) {
             cJSON *plid = cJSON_GetObjectItem(pJsonRoot, "lid");
@@ -981,8 +985,9 @@ static void example_event_callback(esp_blufi_cb_event_t event, esp_blufi_cb_para
 		    } else
                 ESP_LOGI(TAG, "get object token fail");
         }
-		else
-			ESP_LOGI(TAG, "json parse fail");	
+		else {
+			ESP_LOGI(TAG, "json parse fail");
+        }
         free(custimdataBuffer);
         break;
 	case ESP_BLUFI_EVENT_RECV_USERNAME:
@@ -1838,12 +1843,15 @@ void http_get_enable()
     esp_http_client_handle_t client = esp_http_client_init(&config);
     ESP_LOGI(TAG, "http client init");
 
+    ESP_LOGI(TAG, "%s", lulupet_lid_get);
+    ESP_LOGI(TAG, "%s", lulupet_token_get);
+
     // esp_http_client_open -> esp_http_client_write -> esp_http_client_fetch_headers -> esp_http_client_read (and option) esp_http_client_close.
     esp_http_client_set_method(client, HTTP_METHOD_GET);
     esp_http_client_set_header(client, "Accept", "application/json");
 	esp_http_client_set_header(client, "lid",   lulupet_lid_get);
 	esp_http_client_set_header(client, "token", lulupet_token_get);
-	esp_http_client_set_header(client, "X-CSRFToken", "FPhy0U9ujY0xfAa5DYJtDoWtDTV2kFlgMXSQXqyF1MJDy0f4E4hWHodp9LTE6wMV");
+	//esp_http_client_set_header(client, "X-CSRFToken", "FPhy0U9ujY0xfAa5DYJtDoWtDTV2kFlgMXSQXqyF1MJDy0f4E4hWHodp9LTE6wMV");
 
     esp_err_t err;
     if ((err = esp_http_client_open(client, 0)) != ESP_OK) {
