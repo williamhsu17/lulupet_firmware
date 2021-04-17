@@ -1,2 +1,0 @@
-/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ar qc libmicro-ecc.a  CMakeFiles/micro-ecc.dir/micro-ecc/uECC.c.obj
-/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ranlib libmicro-ecc.a
