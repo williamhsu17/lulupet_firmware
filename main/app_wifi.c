@@ -20,6 +20,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 #include "app_wifi.h"
+#include "util.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -269,14 +270,12 @@ extern const char howsmyssl_com_root_cert_pem_start[] asm("_binary_lulupet_com_r
 extern const char howsmyssl_com_root_cert_pem_end[]   asm("_binary_lulupet_com_root_cert_pem_end");
 
 void app_wifi_main(){
-	
-	BLUFI_INFO("Start WiFi ...");
-    
     //Init the driver
     init_driver();
     
     //Creat message queue and LED task
-    
+#if (!FUNC_ONLY_CONSOLE_CLI)
+    BLUFI_INFO("Start WiFi ...");
     qledCMD = xQueueCreate(20,sizeof(unsigned int));
     while(qledCMD == NULL)
     {
@@ -342,6 +341,7 @@ void app_wifi_main(){
     }
 	
 	//app_httpc_main();
+#endif
 }
 
 void led_cmd_task(void *pvParameter)
@@ -1023,8 +1023,6 @@ void blufi_run()
 {
     esp_err_t ret;
 
-
-
     initialise_wifi();
 
     ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT));
@@ -1070,9 +1068,6 @@ void blufi_run()
     }
 
     esp_blufi_profile_init();
-    
-
-    
 }
 
 void check_time_sntp()

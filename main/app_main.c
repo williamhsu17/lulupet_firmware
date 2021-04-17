@@ -22,6 +22,8 @@
 
 #include "app_camera.h"
 #include "app_wifi.h"
+#include "app_cmd.h"
+#include "util.h"
 
 void app_main()
 {
@@ -29,4 +31,9 @@ void app_main()
     app_camera_main();
     // Init and Connect to WiFi
     app_wifi_main();
+
+#if (FUNC_ONLY_CONSOLE_CLI)
+    // Init command line interface
+    app_cmd_main();
+#endif
 }
