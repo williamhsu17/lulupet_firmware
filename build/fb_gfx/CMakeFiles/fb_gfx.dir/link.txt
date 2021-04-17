@@ -1,2 +1,0 @@
-/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ar qc libfb_gfx.a  CMakeFiles/fb_gfx.dir/fb_gfx.c.obj
-/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ranlib libfb_gfx.a

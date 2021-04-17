@@ -1,2 +1,0 @@
-/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ar qc libwifi_provisioning.a  CMakeFiles/wifi_provisioning.dir/src/wifi_config.c.obj CMakeFiles/wifi_provisioning.dir/proto-c/wifi_config.pb-c.c.obj CMakeFiles/wifi_provisioning.dir/proto-c/wifi_constants.pb-c.c.obj
-/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ranlib libwifi_provisioning.a

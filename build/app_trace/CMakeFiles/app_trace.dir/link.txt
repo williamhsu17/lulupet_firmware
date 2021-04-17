@@ -1,2 +1,0 @@
-/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ar qc libapp_trace.a  CMakeFiles/app_trace.dir/app_trace.c.obj CMakeFiles/app_trace.dir/app_trace_util.c.obj CMakeFiles/app_trace.dir/host_file_io.c.obj CMakeFiles/app_trace.dir/gcov/gcov_rtio.c.obj
-/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ranlib libapp_trace.a

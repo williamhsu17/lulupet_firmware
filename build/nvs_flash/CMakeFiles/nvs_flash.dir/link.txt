@@ -1,2 +1,0 @@
-/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ar qc libnvs_flash.a  CMakeFiles/nvs_flash.dir/src/nvs_api.cpp.obj CMakeFiles/nvs_flash.dir/src/nvs_encr.cpp.obj CMakeFiles/nvs_flash.dir/src/nvs_item_hash_list.cpp.obj CMakeFiles/nvs_flash.dir/src/nvs_ops.cpp.obj CMakeFiles/nvs_flash.dir/src/nvs_page.cpp.obj CMakeFiles/nvs_flash.dir/src/nvs_pagemanager.cpp.obj CMakeFiles/nvs_flash.dir/src/nvs_storage.cpp.obj CMakeFiles/nvs_flash.dir/src/nvs_types.cpp.obj
-/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ranlib libnvs_flash.a

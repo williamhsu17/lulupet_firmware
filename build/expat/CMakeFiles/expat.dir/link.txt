@@ -1,2 +1,0 @@
-/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ar qc libexpat.a  CMakeFiles/expat.dir/expat/expat/lib/loadlibrary.c.obj CMakeFiles/expat.dir/expat/expat/lib/xmlparse.c.obj CMakeFiles/expat.dir/expat/expat/lib/xmlrole.c.obj CMakeFiles/expat.dir/expat/expat/lib/xmltok.c.obj CMakeFiles/expat.dir/expat/expat/lib/xmltok_impl.c.obj CMakeFiles/expat.dir/expat/expat/lib/xmltok_ns.c.obj
-/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ranlib libexpat.a

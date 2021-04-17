@@ -1,2 +1,0 @@
-/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ar qc libesp_adc_cal.a  CMakeFiles/esp_adc_cal.dir/esp_adc_cal.c.obj
-/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ranlib libesp_adc_cal.a

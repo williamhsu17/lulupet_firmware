@@ -1,2 +1,0 @@
-/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ar qc libesp-face.a  CMakeFiles/esp-face.dir/face_detection/fd_forward.c.obj CMakeFiles/esp-face.dir/face_recognition/fr_forward.c.obj CMakeFiles/esp-face.dir/face_recognition/fr_flash.c.obj CMakeFiles/esp-face.dir/image_util/image_util.c.obj
-/home/victor0891/esp/xtensa-esp32-elf/bin/xtensa-esp32-elf-ranlib libesp-face.a
