@@ -120,21 +120,10 @@ static esp_ble_adv_params_t example_adv_params = {
     .adv_filter_policy = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
 };
 
-// I2C setting
-#define _I2C_NUMBER(num) I2C_NUM_##num
-#define I2C_NUMBER(num) _I2C_NUMBER(num)
-
 #define DATA_LENGTH 512    /*!< Data buffer length of test buffer */
 #define RW_TEST_LENGTH 128 /*!< Data length for r/w test, [0,DATA_LENGTH] */
 #define DELAY_TIME_BETWEEN_ITEMS_MS                                            \
     1000 /*!< delay time between different test items */
-
-#define WRITE_BIT I2C_MASTER_WRITE /*!< I2C master write */
-#define READ_BIT I2C_MASTER_READ   /*!< I2C master read */
-#define ACK_CHECK_EN 0x1           /*!< I2C master will check ack from slave*/
-#define ACK_CHECK_DIS 0x0 /*!< I2C master will not check ack from slave */
-#define ACK_VAL 0x0       /*!< I2C ack value */
-#define NACK_VAL 0x1      /*!< I2C nack value */
 
 // GPIO setting
 #define GPIO_INPUT_PIR 2
@@ -145,11 +134,6 @@ static esp_ble_adv_params_t example_adv_params = {
 
 #define DEFAULT_VREF 3300 // Use adc2_vref_to_gpio() to obtain a better estimate
 #define NO_OF_SAMPLES 500 // Multisampling
-
-// MCP3221 ADC setting
-#define mcp3221_chip_addr 0x4b // 7-bit I2C address
-#define mcp3221_data_addr 0x0
-#define mcp3221_len 2
 
 // RV3029 RTC setting
 #define rv3029_chip_addr 0x56 // 7-bit I2C address
@@ -180,7 +164,7 @@ static esp_ble_adv_params_t example_adv_params = {
 #define MAX_HTTP_RECV_BUFFER 512
 #define MAX_HTTP_OUTPUT_BUFFER 2048
 
-#define DUMMY_SENSOR 0
+#define DUMMY_SENSOR 1
 
 #define WIFI_LIST_NUM 10
 
@@ -486,7 +470,6 @@ esp_err_t initial_nvs() {
 esp_err_t store_idtoken_nvs() {
     nvs_handle_t handle;
     esp_err_t err;
-    int32_t set_value = 1;
 
     // Open
     err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
@@ -1161,54 +1144,6 @@ void initialize_sntp(void) {
 }
 
 /*==============================================================================================*/
-
-esp_err_t i2c_mcp3221_readADC(i2c_port_t i2c_num, unsigned int *buffer) {
-    esp_err_t ret;
-    uint8_t *data_H = (uint8_t *)malloc(sizeof(uint8_t));
-    uint8_t *data_L = (uint8_t *)malloc(sizeof(uint8_t));
-    uint8_t value_hi, value_lo;
-    unsigned int adc_value = 0;
-    i2c_cmd_handle_t cmd;
-
-    cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, mcp3221_chip_addr << 1 | WRITE_BIT,
-                          ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, mcp3221_data_addr, ACK_CHECK_EN);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK) {
-        free(data_H);
-        free(data_L);
-        return ret;
-    }
-
-    vTaskDelay(30 / portTICK_RATE_MS);
-
-    cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, mcp3221_chip_addr << 1 | READ_BIT, ACK_CHECK_EN);
-    i2c_master_read(cmd, data_H, 1, ACK_VAL);
-    i2c_master_read(cmd, data_L, 1, NACK_VAL);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK) {
-        free(data_H);
-        free(data_L);
-        return ret;
-    }
-    value_hi = *data_H;
-    value_lo = *data_L;
-    adc_value = (int)((((unsigned int)value_hi) << 8) | (value_lo));
-    // ESP_LOGE(TAG, "I2C ADC Read:%x %x %d", *data_H, *data_L, adc_value);
-    *buffer = adc_value;
-    free(data_H);
-    free(data_L);
-    return ret;
-}
-
 esp_err_t i2c_RV3029_readTIME(i2c_port_t i2c_num, unsigned int *buffer) {
     esp_err_t ret;
     i2c_cmd_handle_t cmd;
@@ -1508,26 +1443,6 @@ void init_driver() {
     // LED All ON, IR ON
     i2c_MCP23016_writeREG(I2C_MASTER_NUM, mcp23016_GPIO1_addr, 0x06);
     i2c_MCP23016_writeREG(I2C_MASTER_NUM, mcp23016_OLAT1_addr, 0x06);
-}
-
-unsigned int readADC_multiFilter() {
-    unsigned int *data_adc = (unsigned int *)malloc(sizeof(unsigned int));
-    // Read ADC with Multi-sampling
-    unsigned int adc_reading = 0;
-    unsigned int adc_last = 0;
-    int ret;
-    for (int i = 0; i < 20; i++) {
-        ret = i2c_mcp3221_readADC(I2C_MASTER_NUM, data_adc);
-        if (ret == ESP_OK) {
-            adc_last = *data_adc;
-            adc_reading += *data_adc;
-        } else
-            adc_reading += adc_last;
-        vTaskDelay(pdMS_TO_TICKS(20));
-    }
-    adc_reading /= 20;
-    ESP_LOGI(TAG, "ADC Filter : %d ", adc_reading);
-    return adc_reading;
 }
 
 void app_httpc_main() {
@@ -1931,10 +1846,7 @@ void http_post_data() {
 #if DUMMY_SENSOR
     *sensor_adc = 999;
 #else
-    // read real-time data
-    // i2c_mcp3221_readADC(I2C_MASTER_NUM, sensor_adc);
-    // read ADC with filter
-    *sensor_adc = readADC_multiFilter();
+    // TODO: get sensor_adc from app_weight
 #endif
 
 // read PIR
