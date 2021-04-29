@@ -129,13 +129,6 @@ static esp_ble_adv_params_t example_adv_params = {
 #define DELAY_TIME_BETWEEN_ITEMS_MS                                            \
     1000 /*!< delay time between different test items */
 
-#define I2C_MASTER_SCL_IO 13         /*!< gpio number for I2C master clock */
-#define I2C_MASTER_SDA_IO 4          /*!< gpio number for I2C master data  */
-#define I2C_MASTER_NUM I2C_NUMBER(1) /*!< I2C port number for master dev */
-#define I2C_MASTER_FREQ_HZ 100000    /*!< I2C master clock frequency */
-#define I2C_MASTER_TX_BUF_DISABLE 0  /*!< I2C master doesn't need buffer */
-#define I2C_MASTER_RX_BUF_DISABLE 0  /*!< I2C master doesn't need buffer */
-
 #define WRITE_BIT I2C_MASTER_WRITE /*!< I2C master write */
 #define READ_BIT I2C_MASTER_READ   /*!< I2C master read */
 #define ACK_CHECK_EN 0x1           /*!< I2C master will check ack from slave*/
