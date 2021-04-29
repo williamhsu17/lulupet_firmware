@@ -24,6 +24,7 @@
 
 #include "app_camera.h"
 #include "app_cmd.h"
+#include "app_weight.h"
 #include "app_wifi.h"
 #include "util.h"
 
@@ -35,6 +36,10 @@ void app_main() {
 
     // Init the Camera
     app_camera_main();
+
+    // Init weight task
+    app_weight_main();
+
     // Init and Connect to WiFi
     app_wifi_main();
 }
