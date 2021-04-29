@@ -1,4 +1,4 @@
-set(COMPONENT_SRCS "app_main.c" "app_wifi.c" "app_camera.c" "app_cmd.c" "app_httpd.c" "app_httpc.c" "blufi_security.c" "app_scale.c")
+set(COMPONENT_SRCS "app_main.c" "app_wifi.c" "app_camera.c" "app_cmd.c" "app_weight.c" "app_httpd.c" "app_httpc.c" "blufi_security.c" "app_scale.c")
 set(COMPONENT_ADD_INCLUDEDIRS "include")
 
 set(COMPONENT_REQUIRES
