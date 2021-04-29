@@ -9,6 +9,40 @@
 #include <stdio.h>
 #include <string.h>
 
+static const char *prompt;
+
+static void cmd_task(void *pvParameter) {
+    for (;;) {
+        /* Main loop */
+        while (true) {
+            /* Get a line using linenoise.
+             * The line is returned when ENTER is pressed.
+             */
+            char *line = linenoise(prompt);
+            if (line == NULL) { /* Ignore empty lines */
+                continue;
+            }
+            /* Add the command to the history */
+            linenoiseHistoryAdd(line);
+
+            /* Try to run the command */
+            int ret;
+            esp_err_t err = esp_console_run(line, &ret);
+            if (err == ESP_ERR_NOT_FOUND) {
+                printf("Unrecognized command\n");
+            } else if (err == ESP_OK && ret != ESP_OK) {
+                printf("Command returned non-zero error code: 0x%x\n", ret);
+            } else if (err != ESP_OK) {
+                printf("Internal error: %s\n", esp_err_to_name(err));
+            }
+            /* linenoise allocates line buffer on the heap, so need to free it
+             */
+            linenoiseFree(line);
+        }
+        vTaskDelay(50 / portTICK_PERIOD_MS); // run every 0..05sec
+    }
+}
+
 static void initialize_console() {
     /* Disable buffering on stdin */
     setvbuf(stdin, NULL, _IONBF, 0);
@@ -56,13 +90,13 @@ void app_cmd_main(void) {
     printf(" |        LuluPet AI Litter Box v%d.%d.%d            |\n",
            VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
     printf(" |                                                |\n");
-    printf(" |     Print 'help' to gain overview of commands  |\n");
+    printf(" |    Print 'help' to gain overview of commands   |\n");
     printf(" |                                                |\n");
     printf(" ==================================================\n\n");
     /* Prompt to be printed before each line.
      * This can be customized, made dynamic, etc.
      */
-    const char *prompt = LOG_COLOR_I "esp32> " LOG_RESET_COLOR;
+    prompt = LOG_COLOR_I "lulupet> " LOG_RESET_COLOR;
 
     /* Figure out if the terminal supports escape sequences */
     int probe_status = linenoiseProbe();
@@ -76,33 +110,9 @@ void app_cmd_main(void) {
         /* Since the terminal doesn't support escape sequences,
          * don't use color codes in the prompt.
          */
-        prompt = "esp32> ";
+        prompt = "lulupet> ";
 #endif // CONFIG_LOG_COLORS
     }
 
-    /* Main loop */
-    while (true) {
-        /* Get a line using linenoise.
-         * The line is returned when ENTER is pressed.
-         */
-        char *line = linenoise(prompt);
-        if (line == NULL) { /* Ignore empty lines */
-            continue;
-        }
-        /* Add the command to the history */
-        linenoiseHistoryAdd(line);
-
-        /* Try to run the command */
-        int ret;
-        esp_err_t err = esp_console_run(line, &ret);
-        if (err == ESP_ERR_NOT_FOUND) {
-            printf("Unrecognized command\n");
-        } else if (err == ESP_OK && ret != ESP_OK) {
-            printf("Command returned non-zero error code: 0x%x\n", ret);
-        } else if (err != ESP_OK) {
-            printf("Internal error: %s\n", esp_err_to_name(err));
-        }
-        /* linenoise allocates line buffer on the heap, so need to free it */
-        linenoiseFree(line);
-    }
+    xTaskCreate(&cmd_task, "cmd_task", 4096, NULL, 5, NULL);
 }

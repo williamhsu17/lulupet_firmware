@@ -11,8 +11,7 @@ extern "C" {
 #define VERSION_PATCH 0
 
 // Function
-#define FUNC_ONLY_CONSOLE_CLI                                                  \
-    1 // 0: run product's scenario. 1: run console command line interface
+#define FUNC_CMD_TASK 1 // 1: run console command line interface
 
 #ifdef __cplusplus
 }
