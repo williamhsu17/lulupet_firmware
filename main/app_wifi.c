@@ -125,13 +125,6 @@ static esp_ble_adv_params_t example_adv_params = {
 #define DELAY_TIME_BETWEEN_ITEMS_MS                                            \
     1000 /*!< delay time between different test items */
 
-// GPIO setting
-#define GPIO_INPUT_PIR 2
-#define GPIO_INPUT_PIR_PIN_SEL (1ULL << GPIO_INPUT_PIR)
-#define GPIO_OUTPUT_PIRPWR 33
-#define GPIO_OUTPUT_PIRPWR_PIN_SEL (1ULL << GPIO_OUTPUT_PIRPWR)
-#define ESP_INTR_FLAG_DEFAULT 0
-
 #define DEFAULT_VREF 3300 // Use adc2_vref_to_gpio() to obtain a better estimate
 #define NO_OF_SAMPLES 500 // Multisampling
 
