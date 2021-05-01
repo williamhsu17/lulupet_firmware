@@ -91,11 +91,11 @@ static esp_err_t board_driver_init(void) {
         i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x01, 0x07); // enable both LEDs ON
 
     // Init GPIO Extender
-    err |= i2c_MCP23016_writeREG(I2C_MASTER_NUM, mcp23016_IODIR0_addr, 0xFF);
-    err |= i2c_MCP23016_writeREG(I2C_MASTER_NUM, mcp23016_IODIR1_addr, 0xF8);
+    err |= i2c_MCP23016_writeREG(I2C_MASTER_NUM, MCP23016_IODIR0_ADDR, 0xFF);
+    err |= i2c_MCP23016_writeREG(I2C_MASTER_NUM, MCP23016_IODIR1_ADDR, 0xF8);
     // LED All ON, IR ON
-    err |= i2c_MCP23016_writeREG(I2C_MASTER_NUM, mcp23016_GPIO1_addr, 0x06);
-    err |= i2c_MCP23016_writeREG(I2C_MASTER_NUM, mcp23016_OLAT1_addr, 0x06);
+    err |= i2c_MCP23016_writeREG(I2C_MASTER_NUM, MCP23016_GPIO1_ADDR, 0x06);
+    err |= i2c_MCP23016_writeREG(I2C_MASTER_NUM, MCP23016_OLAT1_ADDR, 0x06);
 
     return ESP_OK;
 }
@@ -202,8 +202,8 @@ esp_err_t i2c_RV3029_readTIME(i2c_port_t i2c_num, unsigned int *buffer) {
     uint8_t *reg_hour = (uint8_t *)malloc(sizeof(uint8_t));
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, rv3029_chip_addr << 1 | WRITE_BIT, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, rv3029_time_addr, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, RV3029_CHIP_ADDR << 1 | WRITE_BIT, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, RV3029_TIME_ADDR, ACK_CHECK_EN);
     i2c_master_stop(cmd);
     ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
@@ -218,7 +218,7 @@ esp_err_t i2c_RV3029_readTIME(i2c_port_t i2c_num, unsigned int *buffer) {
 
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, rv3029_chip_addr << 1 | READ_BIT, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, RV3029_CHIP_ADDR << 1 | READ_BIT, ACK_CHECK_EN);
     i2c_master_read(cmd, reg_sec, 1, ACK_VAL);
     i2c_master_read(cmd, reg_min, 1, ACK_VAL);
     i2c_master_read(cmd, reg_hour, 1, NACK_VAL);
@@ -254,8 +254,8 @@ esp_err_t i2c_RV3029_writeTIME(i2c_port_t i2c_num, int time_hour, int time_min,
     i2c_cmd_handle_t cmd;
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, rv3029_chip_addr << 1 | WRITE_BIT, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, rv3029_time_addr, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, RV3029_CHIP_ADDR << 1 | WRITE_BIT, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, RV3029_TIME_ADDR, ACK_CHECK_EN);
     i2c_master_write_byte(cmd, time_sec, ACK_CHECK_EN);
     i2c_master_write_byte(cmd, time_min, ACK_CHECK_EN);
     i2c_master_write_byte(cmd, time_hour, ACK_CHECK_EN);
@@ -280,8 +280,8 @@ esp_err_t i2c_RV3029_readDay(i2c_port_t i2c_num, unsigned int *buffer) {
     uint8_t *reg_year = (uint8_t *)malloc(sizeof(uint8_t));
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, rv3029_chip_addr << 1 | WRITE_BIT, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, rv3029_date_addr, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, RV3029_CHIP_ADDR << 1 | WRITE_BIT, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, RV3029_DATE_ADDR, ACK_CHECK_EN);
     i2c_master_stop(cmd);
     ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
@@ -297,7 +297,7 @@ esp_err_t i2c_RV3029_readDay(i2c_port_t i2c_num, unsigned int *buffer) {
 
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, rv3029_chip_addr << 1 | READ_BIT, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, RV3029_CHIP_ADDR << 1 | READ_BIT, ACK_CHECK_EN);
     i2c_master_read(cmd, reg_day, 1, ACK_VAL);
     i2c_master_read(cmd, reg_weekday, 1, ACK_VAL);
     i2c_master_read(cmd, reg_mon, 1, ACK_VAL);
@@ -330,8 +330,8 @@ esp_err_t i2c_RV3029_writeDay(i2c_port_t i2c_num, int time_year, int time_mon,
     i2c_cmd_handle_t cmd;
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, rv3029_chip_addr << 1 | WRITE_BIT, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, rv3029_date_addr, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, RV3029_CHIP_ADDR << 1 | WRITE_BIT, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, RV3029_DATE_ADDR, ACK_CHECK_EN);
     i2c_master_write_byte(cmd, time_day, ACK_CHECK_EN);
     i2c_master_write_byte(cmd, time_weekday, ACK_CHECK_EN);
     i2c_master_write_byte(cmd, time_mon, ACK_CHECK_EN);
@@ -354,7 +354,7 @@ esp_err_t i2c_BCT3253_writeREG(i2c_port_t i2c_num, int offset_address,
     i2c_cmd_handle_t cmd;
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, bct3253_chip_addr << 1 | WRITE_BIT,
+    i2c_master_write_byte(cmd, BCT3253_CHIP_ADDR << 1 | WRITE_BIT,
                           ACK_CHECK_EN);
     i2c_master_write_byte(cmd, offset_address, ACK_CHECK_EN);
     i2c_master_write_byte(cmd, value, ACK_CHECK_EN);
@@ -373,7 +373,7 @@ esp_err_t i2c_MCP23016_writeREG(i2c_port_t i2c_num, int offset_address,
     i2c_cmd_handle_t cmd;
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, mcp23016_chip_addr << 1 | WRITE_BIT,
+    i2c_master_write_byte(cmd, MCP23016_CHIP_ADDR << 1 | WRITE_BIT,
                           ACK_CHECK_EN);
     i2c_master_write_byte(cmd, offset_address, ACK_CHECK_EN);
     i2c_master_write_byte(cmd, value, ACK_CHECK_EN);
@@ -393,7 +393,7 @@ esp_err_t i2c_MCP23016_readREG(i2c_port_t i2c_num, int offset_address,
     uint8_t *reg_read = (uint8_t *)malloc(sizeof(uint8_t));
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, mcp23016_chip_addr << 1 | WRITE_BIT,
+    i2c_master_write_byte(cmd, MCP23016_CHIP_ADDR << 1 | WRITE_BIT,
                           ACK_CHECK_EN);
     i2c_master_write_byte(cmd, offset_address, ACK_CHECK_EN);
     i2c_master_stop(cmd);
@@ -408,7 +408,7 @@ esp_err_t i2c_MCP23016_readREG(i2c_port_t i2c_num, int offset_address,
 
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, mcp23016_chip_addr << 1 | READ_BIT,
+    i2c_master_write_byte(cmd, MCP23016_CHIP_ADDR << 1 | READ_BIT,
                           ACK_CHECK_EN);
     i2c_master_read(cmd, reg_read, 1, NACK_VAL);
     i2c_master_stop(cmd);
@@ -431,9 +431,9 @@ esp_err_t i2c_mcp3221_readADC(i2c_port_t i2c_num, unsigned int *buffer) {
 
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, mcp3221_chip_addr << 1 | WRITE_BIT,
+    i2c_master_write_byte(cmd, MCP3221_CHIP_ADDR << 1 | WRITE_BIT,
                           ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, mcp3221_data_addr, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, MCP3221_DATA_ADDR, ACK_CHECK_EN);
     i2c_master_stop(cmd);
     ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
@@ -445,7 +445,7 @@ esp_err_t i2c_mcp3221_readADC(i2c_port_t i2c_num, unsigned int *buffer) {
 
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, mcp3221_chip_addr << 1 | READ_BIT, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, MCP3221_CHIP_ADDR << 1 | READ_BIT, ACK_CHECK_EN);
     i2c_master_read(cmd, &value_hi, 1, ACK_VAL);
     i2c_master_read(cmd, &value_lo, 1, NACK_VAL);
     i2c_master_stop(cmd);

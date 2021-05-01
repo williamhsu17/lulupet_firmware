@@ -161,27 +161,27 @@ extern "C" {
 #define NACK_VAL 0x1      /*!< I2C nack value */
 
 // RV3029 RTC setting
-#define rv3029_chip_addr 0x56 // 7-bit I2C address
-#define rv3029_time_addr 0x08 // offset to start of time registers
-#define rv3029_date_addr 0x0B // offset to start of Date registers
+#define RV3029_CHIP_ADDR 0x56 // 7-bit I2C address
+#define RV3029_TIME_ADDR 0x08 // offset to start of time registers
+#define RV3029_DATE_ADDR 0x0B // offset to start of Date registers
 
 // BCT3253 RGB LED Driver
-#define bct3253_chip_addr 0x30
+#define BCT3253_CHIP_ADDR 0x30
 
 // MCP23016 IO Extender
-#define mcp23016_chip_addr 0x24
-#define mcp23016_GPIO0_addr 0x00
-#define mcp23016_GPIO1_addr 0x01
-#define mcp23016_OLAT0_addr 0x02
-#define mcp23016_OLAT1_addr 0x03
+#define MCP23016_CHIP_ADDR 0x24
+#define MCP23016_GPIO0_ADDR 0x00
+#define MCP23016_GPIO1_ADDR 0x01
+#define MCP23016_OLAT0_ADDR 0x02
+#define MCP23016_OLAT1_ADDR 0x03
 #define MCP23016_IODIR0_ADDR 0x06
-#define mcp23016_IODIR1_addr 0x07
-#define mcp23016_INTCAP0_addr 0x08
-#define mcp23016_INTCAP1_addr 0x09
+#define MCP23016_IODIR1_ADDR 0x07
+#define MCP23016_INTCAP0_ADDR 0x08
+#define MCP23016_INTCAP1_ADDR 0x09
 
 // MCP3221 ADC setting
-#define mcp3221_chip_addr 0x4b // 7-bit I2C address
-#define mcp3221_data_addr 0x0
+#define MCP3221_CHIP_ADDR 0x4b // 7-bit I2C address
+#define MCP3221_DATA_ADDR 0x0
 #define mcp3221_len 2
 
 // Function
