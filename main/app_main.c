@@ -22,24 +22,19 @@
  * SOFTWARE.
  */
 
-#include "app_camera.h"
+//#include "app_camera.h"
 #include "app_cmd.h"
 #include "app_weight.h"
 #include "app_wifi.h"
-#include "util.h"
+#include "include/board_driver.h"
+#include "include/util.h"
 
 void app_main() {
+    // app_camera_main();   // legacy initial camera
+    board_init();
 #if (FUNC_CMD_TASK)
-    // Init command line interface
-    app_cmd_main();
+    app_cmd_main(); // Init command line interface
 #endif
-
-    // Init the Camera
-    app_camera_main();
-
-    // Init weight task
-    app_weight_main();
-
-    // Init and Connect to WiFi
-    app_wifi_main();
+    app_weight_main(); // Init weight task
+    app_wifi_main();   // Init and Connect to WiFi
 }

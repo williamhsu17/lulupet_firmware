@@ -5,6 +5,7 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_vfs_dev.h"
+#include "include/util.h"
 #include "linenoise/linenoise.h"
 #include <stdio.h>
 #include <string.h>
