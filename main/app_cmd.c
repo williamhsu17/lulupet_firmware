@@ -5,14 +5,122 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_vfs_dev.h"
+#include "include/board_driver.h"
 #include "include/util.h"
 #include "linenoise/linenoise.h"
+#include "sys/queue.h"
 #include <stdio.h>
 #include <string.h>
 
+#define TAG "cmd"
+
+#define BANNER                                                                 \
+    "\n =================================================="                    \
+    "\n |                                                |"                    \
+    "\n |        LuluPet AI Litter Box v%d.%d.%d            |"                 \
+    "\n |                                                |"                    \
+    "\n |    Print 'help' to gain overview of commands   |"                    \
+    "\n |                                                |"                    \
+    "\n =================================================="                    \
+    "\n"
+
 static const char *prompt;
 
+#define PARSE_ARG(args)                                                        \
+    do {                                                                       \
+        int err = arg_parse(argc, argv, (void **)&(args));                     \
+        if (err != 0) {                                                        \
+            arg_print_errors(stderr, args.end, argv[0]);                       \
+            return ESP_ERR_INVALID_ARG;                                        \
+        }                                                                      \
+    } while (0)
+
+static int cmd_led_set(int argc, char **argv);
+static esp_err_t register_led_command(void);
+
+struct {
+    struct arg_str *led_type;
+    struct arg_int *en;
+    struct arg_end *end;
+} cmd_led_set_reg_args;
+
+static int cmd_led_set(int argc, char **argv) {
+    esp_err_t err = ESP_OK;
+
+    PARSE_ARG(cmd_led_set_reg_args);
+
+    if (cmd_led_set_reg_args.led_type->count == 0 ||
+        cmd_led_set_reg_args.en->count == 0) {
+        printf("param err");
+        goto cmd_led_set_err;
+    }
+
+    if (cmd_led_set_reg_args.en->ival[0] != 0 &&
+        cmd_led_set_reg_args.en->ival[0] != 1) {
+        printf("en <0|1>\n");
+        goto cmd_led_set_err;
+    }
+
+    if (strcmp(cmd_led_set_reg_args.led_type->sval[0], "w") == 0)
+        err =
+            board_led_ctrl(LED_TYPE_W, (bool)cmd_led_set_reg_args.en->ival[0]);
+    else if (strcmp(cmd_led_set_reg_args.led_type->sval[0], "r") == 0)
+        err =
+            board_led_ctrl(LED_TYPE_R, (bool)cmd_led_set_reg_args.en->ival[0]);
+    else if (strcmp(cmd_led_set_reg_args.led_type->sval[0], "g") == 0)
+        err =
+            board_led_ctrl(LED_TYPE_G, (bool)cmd_led_set_reg_args.en->ival[0]);
+    else if (strcmp(cmd_led_set_reg_args.led_type->sval[0], "b") == 0)
+        err =
+            board_led_ctrl(LED_TYPE_B, (bool)cmd_led_set_reg_args.en->ival[0]);
+    else if (strcmp(cmd_led_set_reg_args.led_type->sval[0], "IR") == 0)
+        err =
+            board_led_ctrl(LED_TYPE_IR, (bool)cmd_led_set_reg_args.en->ival[0]);
+    else if (strcmp(cmd_led_set_reg_args.led_type->sval[0], "W") == 0)
+        err = board_led_ctrl(LED_TYPE_BD_W,
+                             (bool)cmd_led_set_reg_args.en->ival[0]);
+    else
+        printf("led_type <w|r|g|b|IR|W>\n");
+
+    if (err == ESP_OK)
+        printf("ok\n");
+    else
+        printf("err: %s\n", esp_err_to_name(err));
+
+    return 0;
+
+cmd_led_set_err:
+    arg_print_errors(stderr, cmd_led_set_reg_args.end, argv[0]);
+    return -1;
+}
+
+static esp_err_t register_led_command(void) {
+    cmd_led_set_reg_args.led_type =
+        arg_str1("t", "led_type", "<w|r|g|b|IR|W>", "led type");
+    cmd_led_set_reg_args.en = arg_int0("e", "enable", "<0|1>", "enable led");
+    cmd_led_set_reg_args.end = arg_end(2);
+
+    const esp_console_cmd_t cmds[] = {
+        {
+            .command = "led_set",
+            .help = "led set",
+            .hint = NULL,
+            .func = &cmd_led_set,
+            .argtable = &cmd_led_set_reg_args,
+        },
+    };
+
+    for (int i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++) {
+        ESP_ERROR_CHECK(esp_console_cmd_register(&cmds[i]));
+    }
+
+    return ESP_OK;
+}
+
 static void cmd_task(void *pvParameter) {
+    ESP_ERROR_CHECK(esp_console_register_help_command());
+    ESP_ERROR_CHECK(register_led_command());
+
     for (;;) {
         /* Main loop */
         while (true) {
@@ -44,7 +152,7 @@ static void cmd_task(void *pvParameter) {
     }
 }
 
-static void initialize_console() {
+static void console_init() {
     /* Disable buffering on stdin */
     setvbuf(stdin, NULL, _IONBF, 0);
 
@@ -85,15 +193,10 @@ static void initialize_console() {
 }
 
 void app_cmd_main(void) {
-    initialize_console();
+    console_init();
 
-    printf("\n ==================================================\n");
-    printf(" |        LuluPet AI Litter Box v%d.%d.%d            |\n",
-           VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
-    printf(" |                                                |\n");
-    printf(" |    Print 'help' to gain overview of commands   |\n");
-    printf(" |                                                |\n");
-    printf(" ==================================================\n\n");
+    printf(BANNER, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
+
     /* Prompt to be printed before each line.
      * This can be customized, made dynamic, etc.
      */

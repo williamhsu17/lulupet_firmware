@@ -8,9 +8,34 @@ extern "C" {
 #include "sdkconfig.h"
 
 // Version
-#define VERSION_MAJOR 1
-#define VERSION_MINOR 0
+#define VERSION_MAJOR 0
+#define VERSION_MINOR 1
 #define VERSION_PATCH 0
+
+// bitwise
+#ifndef BIT
+#define BIT(n) (1 << (n))
+#endif
+
+#ifndef BIT_SET
+#define BIT_SET(v, n) ((v) |= BIT(n))
+#endif
+
+#ifndef BIT_CLEAR
+#define BIT_CLEAR(v, n) ((v) &= ~(BIT(n)))
+#endif
+
+#ifndef BIT_FLIP
+#define BIT_FLIP(v, n) ((v) ^= BIT(n))
+#endif
+
+#ifndef BIT_CHECK
+#define BIT_CHECK(v, n) ((v)&BIT(n))
+#endif
+
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
+#endif
 
 #define CAMERA_FRAME_SIZE FRAMESIZE_XGA
 
@@ -140,6 +165,10 @@ extern "C" {
 #define PCLK_GPIO_NUM CONFIG_CAMERA_PIN_PCLK
 #endif
 
+// I2C setting
+#define _I2C_NUMBER(num) I2C_NUM_##num
+#define I2C_NUMBER(num) _I2C_NUMBER(num)
+
 // I2C configuration
 #define I2C_MASTER_SCL_IO 13         /*!< gpio number for I2C master clock */
 #define I2C_MASTER_SDA_IO 4          /*!< gpio number for I2C master data  */
@@ -147,10 +176,6 @@ extern "C" {
 #define I2C_MASTER_FREQ_HZ 100000    /*!< I2C master clock frequency */
 #define I2C_MASTER_TX_BUF_DISABLE 0  /*!< I2C master doesn't need buffer */
 #define I2C_MASTER_RX_BUF_DISABLE 0  /*!< I2C master doesn't need buffer */
-
-// I2C setting
-#define _I2C_NUMBER(num) I2C_NUM_##num
-#define I2C_NUMBER(num) _I2C_NUMBER(num)
 
 // I2C comunication
 #define WRITE_BIT I2C_MASTER_WRITE /*!< I2C master write */
@@ -167,6 +192,11 @@ extern "C" {
 
 // BCT3253 RGB LED Driver
 #define BCT3253_CHIP_ADDR 0x30
+#define RGB_LED_R_ADDR 0x03
+#define RGB_LED_G_ADDR 0x05
+#define RGB_LED_B_ADDR 0x04
+#define RGB_LED_ON_VAL 0xC8  // set brightness 20mA
+#define RGB_LED_OFF_VAL 0x00 // set brightness 0mA
 
 // MCP23016 IO Extender
 #define MCP23016_CHIP_ADDR 0x24
@@ -178,6 +208,9 @@ extern "C" {
 #define MCP23016_IODIR1_ADDR 0x07
 #define MCP23016_INTCAP0_ADDR 0x08
 #define MCP23016_INTCAP1_ADDR 0x09
+
+#define MCP23016_IR_LED_BIT 0
+#define MCP23016_W_LED_BIT 1
 
 // MCP3221 ADC setting
 #define MCP3221_CHIP_ADDR 0x4b // 7-bit I2C address

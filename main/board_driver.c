@@ -14,10 +14,62 @@
 
 #define TAG "board_drv"
 
+typedef struct {
+    bool ioe_ir_led;
+    bool ioe_w_led;
+} board_cb_t;
+
+typedef enum {
+    GPIO_OUTPUT_LOW = 0,
+    GPIO_OUTPUT_HIGH = 1,
+} gpio_output_level_e;
+
+board_cb_t board_cb;
+
+static esp_err_t board_ioe_output_en(uint8_t port, uint8_t pin,
+                                     gpio_output_level_e level);
 static esp_err_t board_i2c_master_init(void);
 static esp_err_t board_driver_init(void);
 static esp_err_t board_cam_init_gpio(void);
 static esp_err_t board_cam_init(void);
+
+static esp_err_t board_ioe_output_en(uint8_t port, uint8_t pin,
+                                     gpio_output_level_e level) {
+    uint8_t port_addr;
+    uint8_t latch_addr;
+    uint8_t port_val;
+    uint8_t latch_val;
+
+    if (port == 0) {
+        port_addr = MCP23016_GPIO0_ADDR;
+        latch_addr = MCP23016_OLAT0_ADDR;
+    } else if (port == 1) {
+        port_addr = MCP23016_GPIO1_ADDR;
+        latch_addr = MCP23016_OLAT1_ADDR;
+    } else {
+        return ESP_FAIL;
+    }
+
+    i2c_MCP23016_readREG(I2C_MASTER_NUM, port_addr, &port_val);
+    i2c_MCP23016_readREG(I2C_MASTER_NUM, latch_addr, &latch_val);
+    ESP_LOGD(TAG, "rd ioe_port%d: 0x%02X", port, port_val);
+    ESP_LOGD(TAG, "rd ioe_latch%d: 0x%02X", port, latch_val);
+
+    if (level) {
+        BIT_SET(port_val, pin);
+        BIT_SET(latch_val, pin);
+    } else {
+        BIT_CLEAR(port_val, pin);
+        BIT_CLEAR(latch_val, pin);
+    }
+
+    ESP_LOGD(TAG, "wr ioe_port%d: 0x%02X", port, port_val);
+    ESP_LOGD(TAG, "wr ioe_latch%d: 0x%02X", port, latch_val);
+    i2c_MCP23016_writeREG(I2C_MASTER_NUM, port_addr, port_val);
+    i2c_MCP23016_writeREG(I2C_MASTER_NUM, latch_addr, latch_val);
+
+    return ESP_OK;
+}
 
 /**
  * @brief i2c master initialization
@@ -92,10 +144,13 @@ static esp_err_t board_driver_init(void) {
 
     // Init GPIO Extender
     err |= i2c_MCP23016_writeREG(I2C_MASTER_NUM, MCP23016_IODIR0_ADDR, 0xFF);
-    err |= i2c_MCP23016_writeREG(I2C_MASTER_NUM, MCP23016_IODIR1_ADDR, 0xF8);
-    // LED All ON, IR ON
-    err |= i2c_MCP23016_writeREG(I2C_MASTER_NUM, MCP23016_GPIO1_ADDR, 0x06);
-    err |= i2c_MCP23016_writeREG(I2C_MASTER_NUM, MCP23016_OLAT1_ADDR, 0x06);
+    // set P1.0, P1.1 as output pin.
+    uint8_t port1_ctrl;
+    i2c_MCP23016_readREG(I2C_MASTER_NUM, MCP23016_IODIR1_ADDR, &port1_ctrl);
+    BIT_CLEAR(port1_ctrl, MCP23016_IR_LED_BIT);
+    BIT_CLEAR(port1_ctrl, MCP23016_W_LED_BIT);
+    i2c_MCP23016_writeREG(I2C_MASTER_NUM, MCP23016_IODIR1_ADDR, port1_ctrl);
+    i2c_MCP23016_readREG(I2C_MASTER_NUM, MCP23016_IODIR1_ADDR, &port1_ctrl);
 
     return ESP_OK;
 }
@@ -367,8 +422,8 @@ esp_err_t i2c_BCT3253_writeREG(i2c_port_t i2c_num, int offset_address,
     return ret;
 }
 
-esp_err_t i2c_MCP23016_writeREG(i2c_port_t i2c_num, int offset_address,
-                                int value) {
+esp_err_t i2c_MCP23016_writeREG(i2c_port_t i2c_num, uint8_t offset_address,
+                                uint8_t value) {
     esp_err_t ret;
     i2c_cmd_handle_t cmd;
     cmd = i2c_cmd_link_create();
@@ -386,11 +441,10 @@ esp_err_t i2c_MCP23016_writeREG(i2c_port_t i2c_num, int offset_address,
     return ret;
 }
 
-esp_err_t i2c_MCP23016_readREG(i2c_port_t i2c_num, int offset_address,
-                               unsigned int *buffer) {
+esp_err_t i2c_MCP23016_readREG(i2c_port_t i2c_num, uint8_t offset_address,
+                               uint8_t *buffer) {
     esp_err_t ret;
     i2c_cmd_handle_t cmd;
-    uint8_t *reg_read = (uint8_t *)malloc(sizeof(uint8_t));
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, MCP23016_CHIP_ADDR << 1 | WRITE_BIT,
@@ -400,26 +454,20 @@ esp_err_t i2c_MCP23016_readREG(i2c_port_t i2c_num, int offset_address,
     ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
     if (ret != ESP_OK) {
-        free(reg_read);
         return ret;
     }
-
     vTaskDelay(30 / portTICK_RATE_MS);
-
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, MCP23016_CHIP_ADDR << 1 | READ_BIT,
                           ACK_CHECK_EN);
-    i2c_master_read(cmd, reg_read, 1, NACK_VAL);
+    i2c_master_read(cmd, buffer, 1, NACK_VAL);
     i2c_master_stop(cmd);
     ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
     if (ret != ESP_OK) {
-        free(reg_read);
         return ret;
     }
-    *buffer = *reg_read;
-    free(reg_read);
     return ret;
 }
 
@@ -459,6 +507,84 @@ esp_err_t i2c_mcp3221_readADC(i2c_port_t i2c_num, unsigned int *buffer) {
     ESP_LOGD(TAG, "I2C ADC Read:%x %x %d", value_hi, value_lo, (*buffer));
 
     return ret;
+}
+
+esp_err_t board_led_ctrl(led_type_e led, bool enable) {
+    ESP_LOGD(TAG, "led: %d, enable: %d", led, enable);
+
+    switch (led) {
+    case LED_TYPE_W:
+        if (enable) {
+            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_R_ADDR,
+                                 RGB_LED_ON_VAL);
+            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_G_ADDR,
+                                 RGB_LED_ON_VAL);
+            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_B_ADDR,
+                                 RGB_LED_ON_VAL);
+        } else {
+            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_R_ADDR,
+                                 RGB_LED_OFF_VAL);
+            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_G_ADDR,
+                                 RGB_LED_OFF_VAL);
+            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_B_ADDR,
+                                 RGB_LED_OFF_VAL);
+        }
+        break;
+
+    case LED_TYPE_R:
+        if (enable) {
+            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_R_ADDR,
+                                 RGB_LED_ON_VAL);
+        } else {
+            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_R_ADDR,
+                                 RGB_LED_OFF_VAL);
+        }
+        break;
+
+    case LED_TYPE_G:
+        if (enable) {
+            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_G_ADDR,
+                                 RGB_LED_ON_VAL);
+        } else {
+            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_G_ADDR,
+                                 RGB_LED_OFF_VAL);
+        }
+        break;
+
+    case LED_TYPE_B:
+        if (enable) {
+            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_B_ADDR,
+                                 RGB_LED_ON_VAL);
+        } else {
+            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_B_ADDR,
+                                 RGB_LED_OFF_VAL);
+        }
+        break;
+
+    case LED_TYPE_IR:
+        if (enable) {
+            board_ioe_output_en(MCP23016_GPIO1_ADDR, MCP23016_IR_LED_BIT,
+                                GPIO_OUTPUT_HIGH);
+        } else {
+            board_ioe_output_en(MCP23016_GPIO1_ADDR, MCP23016_IR_LED_BIT,
+                                GPIO_OUTPUT_LOW);
+        }
+        break;
+    case LED_TYPE_BD_W:
+        if (enable) {
+            board_ioe_output_en(MCP23016_GPIO1_ADDR, MCP23016_W_LED_BIT,
+                                GPIO_OUTPUT_HIGH);
+        } else {
+            board_ioe_output_en(MCP23016_GPIO1_ADDR, MCP23016_W_LED_BIT,
+                                GPIO_OUTPUT_LOW);
+        }
+        break;
+
+    default:
+        break;
+    }
+
+    return ESP_OK;
 }
 
 esp_err_t board_init(void) {

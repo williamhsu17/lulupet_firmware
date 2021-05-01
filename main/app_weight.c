@@ -142,7 +142,7 @@ static void weight_get(void) {
             w_task_cb.ref_weight = weight_calculate(w_task_cb.ref_adc);
         }
 
-        ESP_LOGI(TAG, "now [%.2f] ref [%.2f]", w_task_cb.now_weight,
+        ESP_LOGD(TAG, "now [%.2f] ref [%.2f]", w_task_cb.now_weight,
                  w_task_cb.ref_weight);
     }
 }
@@ -175,7 +175,7 @@ static void weight_fsm_check_jump(void) {
             !sensor_pir) {
             w_task_cb.jump_to_bigjump_cnt = 0;
             ++w_task_cb.jump_to_standby_cnt;
-            ESP_LOGI(TAG, "jump_to_standby_cnt: %d",
+            ESP_LOGW(TAG, "jump_to_standby_cnt: %d",
                      w_task_cb.jump_to_standby_cnt);
             if (w_task_cb.jump_to_standby_cnt == w_task_cb.jump_to_standby_num)
                 weight_fsm_goto_standby();
@@ -183,7 +183,7 @@ static void weight_fsm_check_jump(void) {
                    sensor_pir) {
             w_task_cb.jump_to_standby_cnt = 0;
             ++w_task_cb.jump_to_bigjump_cnt;
-            ESP_LOGI(TAG, "jump_to_bigjump_cnt: %d",
+            ESP_LOGW(TAG, "jump_to_bigjump_cnt: %d",
                      w_task_cb.jump_to_bigjump_cnt);
             if (w_task_cb.jump_to_bigjump_cnt == w_task_cb.jump_to_bigjump_num)
                 weight_fsm_goto_bigjump();

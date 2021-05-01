@@ -5,6 +5,8 @@
 extern "C" {
 #endif
 
+#include "esp_err.h"
+
 void app_cmd_main(void);
 
 #ifdef __cplusplus

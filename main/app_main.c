@@ -26,8 +26,11 @@
 #include "app_cmd.h"
 #include "app_weight.h"
 #include "app_wifi.h"
+#include "esp_log.h"
 #include "include/board_driver.h"
 #include "include/util.h"
+
+#define TAG "app_main"
 
 void app_main() {
     // app_camera_main();   // legacy initial camera
