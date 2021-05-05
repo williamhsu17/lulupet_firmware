@@ -39,5 +39,5 @@ void app_main() {
     app_cmd_main(); // Init command line interface
 #endif
     app_weight_main(); // Init weight task
-    app_wifi_main();   // Init and Connect to WiFi
+    // app_wifi_main();   // Init and Connect to WiFi
 }

@@ -5,6 +5,7 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_vfs_dev.h"
+#include "include/app_weight.h"
 #include "include/board_driver.h"
 #include "include/util.h"
 #include "linenoise/linenoise.h"
@@ -37,48 +38,49 @@ static const char *prompt;
 
 static int cmd_led_set(int argc, char **argv);
 static esp_err_t register_led_command(void);
+#if (FUNC_WEIGHT_FAKE)
+static int cmd_weight_condition_set(int argc, char **argv);
+#endif
+static int cmd_weight_get_param(int argc, char **argv);
+static esp_err_t register_weight_command(void);
 
 struct {
     struct arg_str *led_type;
     struct arg_int *en;
     struct arg_end *end;
-} cmd_led_set_reg_args;
+} cmd_led_set_args;
+
+extern weight_task_cb w_task_cb;
 
 static int cmd_led_set(int argc, char **argv) {
     esp_err_t err = ESP_OK;
 
-    PARSE_ARG(cmd_led_set_reg_args);
+    PARSE_ARG(cmd_led_set_args);
 
-    if (cmd_led_set_reg_args.led_type->count == 0 ||
-        cmd_led_set_reg_args.en->count == 0) {
+    if (cmd_led_set_args.led_type->count == 0 ||
+        cmd_led_set_args.en->count == 0) {
         printf("param err");
         goto cmd_led_set_err;
     }
 
-    if (cmd_led_set_reg_args.en->ival[0] != 0 &&
-        cmd_led_set_reg_args.en->ival[0] != 1) {
+    if (cmd_led_set_args.en->ival[0] != 0 &&
+        cmd_led_set_args.en->ival[0] != 1) {
         printf("en <0|1>\n");
         goto cmd_led_set_err;
     }
 
-    if (strcmp(cmd_led_set_reg_args.led_type->sval[0], "w") == 0)
-        err =
-            board_led_ctrl(LED_TYPE_W, (bool)cmd_led_set_reg_args.en->ival[0]);
-    else if (strcmp(cmd_led_set_reg_args.led_type->sval[0], "r") == 0)
-        err =
-            board_led_ctrl(LED_TYPE_R, (bool)cmd_led_set_reg_args.en->ival[0]);
-    else if (strcmp(cmd_led_set_reg_args.led_type->sval[0], "g") == 0)
-        err =
-            board_led_ctrl(LED_TYPE_G, (bool)cmd_led_set_reg_args.en->ival[0]);
-    else if (strcmp(cmd_led_set_reg_args.led_type->sval[0], "b") == 0)
-        err =
-            board_led_ctrl(LED_TYPE_B, (bool)cmd_led_set_reg_args.en->ival[0]);
-    else if (strcmp(cmd_led_set_reg_args.led_type->sval[0], "IR") == 0)
-        err =
-            board_led_ctrl(LED_TYPE_IR, (bool)cmd_led_set_reg_args.en->ival[0]);
-    else if (strcmp(cmd_led_set_reg_args.led_type->sval[0], "W") == 0)
-        err = board_led_ctrl(LED_TYPE_BD_W,
-                             (bool)cmd_led_set_reg_args.en->ival[0]);
+    if (strcmp(cmd_led_set_args.led_type->sval[0], "w") == 0)
+        err = board_led_ctrl(LED_TYPE_W, (bool)cmd_led_set_args.en->ival[0]);
+    else if (strcmp(cmd_led_set_args.led_type->sval[0], "r") == 0)
+        err = board_led_ctrl(LED_TYPE_R, (bool)cmd_led_set_args.en->ival[0]);
+    else if (strcmp(cmd_led_set_args.led_type->sval[0], "g") == 0)
+        err = board_led_ctrl(LED_TYPE_G, (bool)cmd_led_set_args.en->ival[0]);
+    else if (strcmp(cmd_led_set_args.led_type->sval[0], "b") == 0)
+        err = board_led_ctrl(LED_TYPE_B, (bool)cmd_led_set_args.en->ival[0]);
+    else if (strcmp(cmd_led_set_args.led_type->sval[0], "IR") == 0)
+        err = board_led_ctrl(LED_TYPE_IR, (bool)cmd_led_set_args.en->ival[0]);
+    else if (strcmp(cmd_led_set_args.led_type->sval[0], "W") == 0)
+        err = board_led_ctrl(LED_TYPE_BD_W, (bool)cmd_led_set_args.en->ival[0]);
     else
         printf("led_type <w|r|g|b|IR|W>\n");
 
@@ -90,15 +92,15 @@ static int cmd_led_set(int argc, char **argv) {
     return 0;
 
 cmd_led_set_err:
-    arg_print_errors(stderr, cmd_led_set_reg_args.end, argv[0]);
+    arg_print_errors(stderr, cmd_led_set_args.end, argv[0]);
     return -1;
 }
 
 static esp_err_t register_led_command(void) {
-    cmd_led_set_reg_args.led_type =
+    cmd_led_set_args.led_type =
         arg_str1("t", "led_type", "<w|r|g|b|IR|W>", "led type");
-    cmd_led_set_reg_args.en = arg_int0("e", "enable", "<0|1>", "enable led");
-    cmd_led_set_reg_args.end = arg_end(2);
+    cmd_led_set_args.en = arg_int0("e", "enable", "<0|1>", "enable led");
+    cmd_led_set_args.end = arg_end(2);
 
     const esp_console_cmd_t cmds[] = {
         {
@@ -106,7 +108,109 @@ static esp_err_t register_led_command(void) {
             .help = "led set",
             .hint = NULL,
             .func = &cmd_led_set,
-            .argtable = &cmd_led_set_reg_args,
+            .argtable = &cmd_led_set_args,
+        },
+    };
+
+    for (int i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++) {
+        ESP_ERROR_CHECK(esp_console_cmd_register(&cmds[i]));
+    }
+
+    return ESP_OK;
+}
+
+#if (FUNC_WEIGHT_FAKE)
+struct {
+    struct arg_str *condition_type;
+    struct arg_int *value;
+    struct arg_end *end;
+} cmd_weight_condition_set_args;
+
+static int cmd_weight_condition_set(int argc, char **argv) {
+    PARSE_ARG(cmd_weight_condition_set_args);
+
+    if (cmd_weight_condition_set_args.condition_type->count == 0 ||
+        cmd_weight_condition_set_args.value->count == 0) {
+        printf("param err");
+        goto cmd_weight_condition_set_err;
+    }
+
+    if (strcmp(cmd_weight_condition_set_args.condition_type->sval[0],
+               "adc_w") == 0)
+        w_task_cb.now_weight =
+            cmd_weight_condition_set_args.value->ival[0] * 1.0;
+    else if (strcmp(cmd_weight_condition_set_args.condition_type->sval[0],
+                    "ref_w") == 0)
+        w_task_cb.ref_weight =
+            cmd_weight_condition_set_args.value->ival[0] * 1.0;
+    else if (strcmp(cmd_weight_condition_set_args.condition_type->sval[0],
+                    "pir") == 0)
+        w_task_cb.pir_level = cmd_weight_condition_set_args.value->ival[0];
+    else
+        printf("weight_condition <adc_w|ref_w|pir>\n");
+
+    return 0;
+
+cmd_weight_condition_set_err:
+    arg_print_errors(stderr, cmd_weight_condition_set_args.end, argv[0]);
+    return -1;
+}
+#endif
+
+struct {
+    struct arg_str *list;
+    struct arg_end *end;
+} cmd_weight_get_param_args;
+
+static int cmd_weight_get_param(int argc, char **argv) {
+    PARSE_ARG(cmd_weight_get_param_args);
+
+    printf("active_weight: %.2f\n", w_task_cb.active_weight);
+    printf("cat_weight: %.2f\n", w_task_cb.cat_weight);
+    printf("jump_to_standby_chk: %d\n", w_task_cb.jump_to_standby_chk);
+    printf("jump_to_bigjump_chk: %d\n", w_task_cb.jump_to_bigjump_chk);
+    printf("jump_chk: %d\n", w_task_cb.jump_chk);
+    printf("postevnet_chk: %d\n", w_task_cb.postevnet_chk);
+    printf("jump_pause_times: %d\n", w_task_cb.jump_pause_times);
+    printf("standby_period_ms: %d\n", w_task_cb.standby_period_ms);
+    printf("jump_period_ms: %d\n", w_task_cb.jump_period_ms);
+    printf("bugjump_period_ms: %d\n", w_task_cb.bugjump_period_ms);
+    printf("postevent_period_ms: %d\n", w_task_cb.postevent_period_ms);
+    printf("pir_level: %d\n", gpio_get_level(GPIO_INPUT_PIR));
+
+    return 0;
+}
+
+static esp_err_t register_weight_command(void) {
+
+#if (FUNC_WEIGHT_FAKE)
+    cmd_weight_condition_set_args.condition_type = arg_str1(
+        "c", "weight_condition", "<adc_w|ref_w|pir>", "weight condition type");
+    cmd_weight_condition_set_args.value =
+        arg_int0("v", "value", "", "condition value");
+    cmd_weight_condition_set_args.end = arg_end(2);
+#endif
+
+    cmd_weight_get_param_args.list =
+        arg_str1("l", "weight_get_param", "<1>", "weight list parameters");
+    cmd_weight_get_param_args.end = arg_end(1);
+
+    const esp_console_cmd_t cmds[] = {
+#if (FUNC_WEIGHT_FAKE)
+        {
+            .command = "weight_condition_set",
+            .help = "weight condition set",
+            .hint = NULL,
+            .func = &cmd_weight_condition_set,
+            .argtable = &cmd_weight_condition_set_args,
+        },
+#endif
+        {
+            .command = "weight_get",
+            .help = "weight get",
+            .hint = NULL,
+            .func = &cmd_weight_get_param,
+            .argtable = &cmd_weight_get_param_args,
         },
     };
 
@@ -120,6 +224,7 @@ static esp_err_t register_led_command(void) {
 static void cmd_task(void *pvParameter) {
     ESP_ERROR_CHECK(esp_console_register_help_command());
     ESP_ERROR_CHECK(register_led_command());
+    ESP_ERROR_CHECK(register_weight_command());
 
     for (;;) {
         /* Main loop */

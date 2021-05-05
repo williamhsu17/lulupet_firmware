@@ -218,7 +218,8 @@ extern "C" {
 #define mcp3221_len 2
 
 // Function
-#define FUNC_CMD_TASK 1 // 1: run console command line interface
+#define FUNC_CMD_TASK 1    // 1: run console command line interface
+#define FUNC_WEIGHT_FAKE 0 // 1: use fake condition to test fsm
 
 #ifdef __cplusplus
 }
