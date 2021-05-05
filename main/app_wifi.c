@@ -22,7 +22,8 @@
  * SOFTWARE.
  */
 #include "app_wifi.h"
-#include "util.h"
+#include "include/board_driver.h"
+#include "include/util.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -120,62 +121,13 @@ static esp_ble_adv_params_t example_adv_params = {
     .adv_filter_policy = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
 };
 
-// I2C setting
-#define _I2C_NUMBER(num) I2C_NUM_##num
-#define I2C_NUMBER(num) _I2C_NUMBER(num)
-
 #define DATA_LENGTH 512    /*!< Data buffer length of test buffer */
 #define RW_TEST_LENGTH 128 /*!< Data length for r/w test, [0,DATA_LENGTH] */
 #define DELAY_TIME_BETWEEN_ITEMS_MS                                            \
     1000 /*!< delay time between different test items */
 
-#define I2C_MASTER_SCL_IO 13         /*!< gpio number for I2C master clock */
-#define I2C_MASTER_SDA_IO 4          /*!< gpio number for I2C master data  */
-#define I2C_MASTER_NUM I2C_NUMBER(1) /*!< I2C port number for master dev */
-#define I2C_MASTER_FREQ_HZ 100000    /*!< I2C master clock frequency */
-#define I2C_MASTER_TX_BUF_DISABLE 0  /*!< I2C master doesn't need buffer */
-#define I2C_MASTER_RX_BUF_DISABLE 0  /*!< I2C master doesn't need buffer */
-
-#define WRITE_BIT I2C_MASTER_WRITE /*!< I2C master write */
-#define READ_BIT I2C_MASTER_READ   /*!< I2C master read */
-#define ACK_CHECK_EN 0x1           /*!< I2C master will check ack from slave*/
-#define ACK_CHECK_DIS 0x0 /*!< I2C master will not check ack from slave */
-#define ACK_VAL 0x0       /*!< I2C ack value */
-#define NACK_VAL 0x1      /*!< I2C nack value */
-
-// GPIO setting
-#define GPIO_INPUT_PIR 2
-#define GPIO_INPUT_PIR_PIN_SEL (1ULL << GPIO_INPUT_PIR)
-#define GPIO_OUTPUT_PIRPWR 33
-#define GPIO_OUTPUT_PIRPWR_PIN_SEL (1ULL << GPIO_OUTPUT_PIRPWR)
-#define ESP_INTR_FLAG_DEFAULT 0
-
 #define DEFAULT_VREF 3300 // Use adc2_vref_to_gpio() to obtain a better estimate
 #define NO_OF_SAMPLES 500 // Multisampling
-
-// MCP3221 ADC setting
-#define mcp3221_chip_addr 0x4b // 7-bit I2C address
-#define mcp3221_data_addr 0x0
-#define mcp3221_len 2
-
-// RV3029 RTC setting
-#define rv3029_chip_addr 0x56 // 7-bit I2C address
-#define rv3029_time_addr 0x08 // offset to start of time registers
-#define rv3029_date_addr 0x0B // offset to start of Date registers
-
-// BCT3253 RGB LED Driver
-#define bct3253_chip_addr 0x30
-
-// MCP23016 IO Extender
-#define mcp23016_chip_addr 0x24
-#define mcp23016_GPIO0_addr 0x00
-#define mcp23016_GPIO1_addr 0x01
-#define mcp23016_OLAT0_addr 0x02
-#define mcp23016_OLAT1_addr 0x03
-#define mcp23016_IODIR0_addr 0x06
-#define mcp23016_IODIR1_addr 0x07
-#define mcp23016_INTCAP0_addr 0x08
-#define mcp23016_INTCAP1_addr 0x09
 
 /* Constants that aren't configurable in menuconfig */
 #define SERVER_URL "lulupet.williamhsu.com.tw"
@@ -187,7 +139,7 @@ static esp_ble_adv_params_t example_adv_params = {
 #define MAX_HTTP_RECV_BUFFER 512
 #define MAX_HTTP_OUTPUT_BUFFER 2048
 
-#define DUMMY_SENSOR 0
+#define DUMMY_SENSOR 1
 
 #define WIFI_LIST_NUM 10
 
@@ -240,22 +192,6 @@ void obtain_time(void);
 void initialize_sntp(void);
 void check_time_sntp();
 
-esp_err_t i2c_mcp3221_readADC(i2c_port_t i2c_num, unsigned int *buffer);
-esp_err_t i2c_RV3029_readTIME(i2c_port_t i2c_num, unsigned int *buffer);
-esp_err_t i2c_RV3029_writeTIME(i2c_port_t i2c_num, int time_hour, int time_min,
-                               int time_sec);
-esp_err_t i2c_RV3029_readDay(i2c_port_t i2c_num, unsigned int *buffer);
-esp_err_t i2c_RV3029_writeDay(i2c_port_t i2c_num, int time_year, int time_mon,
-                              int time_day, int time_weekday);
-esp_err_t i2c_BCT3253_writeREG(i2c_port_t i2c_num, int offset_address,
-                               int value);
-esp_err_t i2c_MCP23016_writeREG(i2c_port_t i2c_num, int offset_address,
-                                int value);
-esp_err_t i2c_MCP23016_readREG(i2c_port_t i2c_num, int offset_address,
-                               unsigned int *buffer);
-esp_err_t i2c_master_init();
-void init_pir_gpio();
-void init_driver();
 void app_httpc_main();
 void http_post_task();
 void http_post_photo();
@@ -287,9 +223,6 @@ extern const char howsmyssl_com_root_cert_pem_end[] asm(
     "_binary_lulupet_com_root_cert_pem_end");
 
 void app_wifi_main() {
-    // Init the driver
-    init_driver();
-
     // Creat message queue and LED task
     BLUFI_INFO("Start WiFi ...");
     qledCMD = xQueueCreate(20, sizeof(unsigned int));
@@ -493,7 +426,6 @@ esp_err_t initial_nvs() {
 esp_err_t store_idtoken_nvs() {
     nvs_handle_t handle;
     esp_err_t err;
-    int32_t set_value = 1;
 
     // Open
     err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
@@ -1168,380 +1100,11 @@ void initialize_sntp(void) {
 }
 
 /*==============================================================================================*/
-
-esp_err_t i2c_mcp3221_readADC(i2c_port_t i2c_num, unsigned int *buffer) {
-    esp_err_t ret;
-    uint8_t *data_H = (uint8_t *)malloc(sizeof(uint8_t));
-    uint8_t *data_L = (uint8_t *)malloc(sizeof(uint8_t));
-    uint8_t value_hi, value_lo;
-    unsigned int adc_value = 0;
-    i2c_cmd_handle_t cmd;
-
-    cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, mcp3221_chip_addr << 1 | WRITE_BIT,
-                          ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, mcp3221_data_addr, ACK_CHECK_EN);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK) {
-        free(data_H);
-        free(data_L);
-        return ret;
-    }
-
-    vTaskDelay(30 / portTICK_RATE_MS);
-
-    cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, mcp3221_chip_addr << 1 | READ_BIT, ACK_CHECK_EN);
-    i2c_master_read(cmd, data_H, 1, ACK_VAL);
-    i2c_master_read(cmd, data_L, 1, NACK_VAL);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK) {
-        free(data_H);
-        free(data_L);
-        return ret;
-    }
-    value_hi = *data_H;
-    value_lo = *data_L;
-    adc_value = (int)((((unsigned int)value_hi) << 8) | (value_lo));
-    // ESP_LOGE(TAG, "I2C ADC Read:%x %x %d", *data_H, *data_L, adc_value);
-    *buffer = adc_value;
-    free(data_H);
-    free(data_L);
-    return ret;
-}
-
-esp_err_t i2c_RV3029_readTIME(i2c_port_t i2c_num, unsigned int *buffer) {
-    esp_err_t ret;
-    i2c_cmd_handle_t cmd;
-    int time_sec, time_min, time_hour;
-    uint8_t *reg_sec = (uint8_t *)malloc(sizeof(uint8_t));
-    uint8_t *reg_min = (uint8_t *)malloc(sizeof(uint8_t));
-    uint8_t *reg_hour = (uint8_t *)malloc(sizeof(uint8_t));
-    cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, rv3029_chip_addr << 1 | WRITE_BIT, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, rv3029_time_addr, ACK_CHECK_EN);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK) {
-        free(reg_sec);
-        free(reg_min);
-        free(reg_hour);
-        return ret;
-    }
-
-    vTaskDelay(30 / portTICK_RATE_MS);
-
-    cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, rv3029_chip_addr << 1 | READ_BIT, ACK_CHECK_EN);
-    i2c_master_read(cmd, reg_sec, 1, ACK_VAL);
-    i2c_master_read(cmd, reg_min, 1, ACK_VAL);
-    i2c_master_read(cmd, reg_hour, 1, NACK_VAL);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK) {
-        free(reg_sec);
-        free(reg_min);
-        free(reg_hour);
-        return ret;
-    }
-    time_sec = ((*reg_sec) >> 4) * 10 + (0xf & (*reg_sec));
-    time_min = ((*reg_min) >> 4) * 10 + (0xf & (*reg_min));
-    if (((*reg_hour) & 0x40) == 0) { // 24-hour mode
-        time_hour = ((*reg_hour & 0x3F) >> 4) * 10 + (0xf & (*reg_hour & 0x3F));
-    } else { // 12-hour AM-PM mode
-        time_hour =
-            (((*reg_hour & 0x1F) >> 4) * 10 + (0xf & (*reg_hour & 0x1F))) +
-            ((*reg_hour) & 0x20) * 12;
-    }
-    // ESP_LOGE(TAG, "I2C RTC Read:%d %d %d", time_hour, time_min, time_sec);
-    *buffer = time_sec + time_min * 100 + time_hour * 10000;
-    free(reg_sec);
-    free(reg_min);
-    free(reg_hour);
-    return ret;
-}
-
-esp_err_t i2c_RV3029_writeTIME(i2c_port_t i2c_num, int time_hour, int time_min,
-                               int time_sec) {
-    esp_err_t ret;
-    i2c_cmd_handle_t cmd;
-    cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, rv3029_chip_addr << 1 | WRITE_BIT, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, rv3029_time_addr, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, time_sec, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, time_min, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, time_hour, ACK_CHECK_EN);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-
-    // ESP_LOGE(TAG, "I2C RTC Write:%x %x %x", time_hour, time_min, time_sec);
-    return ret;
-}
-
-esp_err_t i2c_RV3029_readDay(i2c_port_t i2c_num, unsigned int *buffer) {
-    esp_err_t ret;
-    i2c_cmd_handle_t cmd;
-    int time_day, time_mon, time_year;
-    uint8_t *reg_day = (uint8_t *)malloc(sizeof(uint8_t));
-    uint8_t *reg_weekday = (uint8_t *)malloc(sizeof(uint8_t));
-    uint8_t *reg_mon = (uint8_t *)malloc(sizeof(uint8_t));
-    uint8_t *reg_year = (uint8_t *)malloc(sizeof(uint8_t));
-    cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, rv3029_chip_addr << 1 | WRITE_BIT, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, rv3029_date_addr, ACK_CHECK_EN);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK) {
-        free(reg_day);
-        free(reg_weekday);
-        free(reg_mon);
-        free(reg_year);
-        return ret;
-    }
-
-    vTaskDelay(30 / portTICK_RATE_MS);
-
-    cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, rv3029_chip_addr << 1 | READ_BIT, ACK_CHECK_EN);
-    i2c_master_read(cmd, reg_day, 1, ACK_VAL);
-    i2c_master_read(cmd, reg_weekday, 1, ACK_VAL);
-    i2c_master_read(cmd, reg_mon, 1, ACK_VAL);
-    i2c_master_read(cmd, reg_year, 1, NACK_VAL);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK) {
-        free(reg_day);
-        free(reg_weekday);
-        free(reg_mon);
-        free(reg_year);
-        return ret;
-    }
-    time_day = ((*reg_day & 0x3F) >> 4) * 10 + (0xf & (*reg_day & 0x3F));
-    time_mon = ((*reg_mon & 0x1F) >> 4) * 10 + (0xf & (*reg_mon & 0x1F));
-    time_year = ((*reg_year & 0x7F) >> 4) * 10 + (0xf & (*reg_year & 0x7F));
-    // ESP_LOGE(TAG, "I2C RTC Read:%d %d %d", time_year, time_mon, time_day);
-    *buffer = time_day + time_mon * 100 + (time_year + 2000) * 10000;
-    free(reg_day);
-    free(reg_weekday);
-    free(reg_mon);
-    free(reg_year);
-    return ret;
-}
-
-esp_err_t i2c_RV3029_writeDay(i2c_port_t i2c_num, int time_year, int time_mon,
-                              int time_day, int time_weekday) {
-    esp_err_t ret;
-    i2c_cmd_handle_t cmd;
-    cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, rv3029_chip_addr << 1 | WRITE_BIT, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, rv3029_date_addr, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, time_day, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, time_weekday, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, time_mon, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, time_year, ACK_CHECK_EN);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-
-    // ESP_LOGE(TAG, "I2C RTC Write:%x %x %x %x", time_year, time_mon, time_day,
-    // time_weekday);
-    return ret;
-}
-
-esp_err_t i2c_BCT3253_writeREG(i2c_port_t i2c_num, int offset_address,
-                               int value) {
-    esp_err_t ret;
-    i2c_cmd_handle_t cmd;
-    cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, bct3253_chip_addr << 1 | WRITE_BIT,
-                          ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, offset_address, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, value, ACK_CHECK_EN);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-    return ret;
-}
-
-esp_err_t i2c_MCP23016_writeREG(i2c_port_t i2c_num, int offset_address,
-                                int value) {
-    esp_err_t ret;
-    i2c_cmd_handle_t cmd;
-    cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, mcp23016_chip_addr << 1 | WRITE_BIT,
-                          ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, offset_address, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, value, ACK_CHECK_EN);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-    return ret;
-}
-
-esp_err_t i2c_MCP23016_readREG(i2c_port_t i2c_num, int offset_address,
-                               unsigned int *buffer) {
-    esp_err_t ret;
-    i2c_cmd_handle_t cmd;
-    uint8_t *reg_read = (uint8_t *)malloc(sizeof(uint8_t));
-    cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, mcp23016_chip_addr << 1 | WRITE_BIT,
-                          ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, offset_address, ACK_CHECK_EN);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK) {
-        free(reg_read);
-        return ret;
-    }
-
-    vTaskDelay(30 / portTICK_RATE_MS);
-
-    cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, mcp23016_chip_addr << 1 | READ_BIT,
-                          ACK_CHECK_EN);
-    i2c_master_read(cmd, reg_read, 1, NACK_VAL);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK) {
-        free(reg_read);
-        return ret;
-    }
-    *buffer = *reg_read;
-    free(reg_read);
-    return ret;
-}
-
-/**
- * @brief i2c master initialization
- */
-esp_err_t i2c_master_init() {
-    int i2c_master_port = I2C_MASTER_NUM;
-    i2c_config_t conf;
-    conf.mode = I2C_MODE_MASTER;
-    conf.sda_io_num = I2C_MASTER_SDA_IO;
-    conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
-    conf.scl_io_num = I2C_MASTER_SCL_IO;
-    conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
-    conf.master.clk_speed = I2C_MASTER_FREQ_HZ;
-    i2c_param_config(i2c_master_port, &conf);
-    return i2c_driver_install(i2c_master_port, conf.mode,
-                              I2C_MASTER_RX_BUF_DISABLE,
-                              I2C_MASTER_TX_BUF_DISABLE, 0);
-}
-
-void init_pir_gpio() {
-    gpio_config_t io_conf;
-
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    // set as output mode
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    // bit mask of the pins
-    io_conf.pin_bit_mask = GPIO_OUTPUT_PIRPWR_PIN_SEL;
-    // disable pull-down mode
-    io_conf.pull_down_en = 0;
-    // disable pull-up mode
-    io_conf.pull_up_en = 1;
-    // configure GPIO with the given settings
-    gpio_config(&io_conf);
-
-    // interrupt of rising edge
-    io_conf.intr_type = GPIO_INTR_ANYEDGE;
-    // bit mask of the pins, use GPIO2 here
-    io_conf.pin_bit_mask = GPIO_INPUT_PIR_PIN_SEL;
-    // set as input mode
-    io_conf.mode = GPIO_MODE_INPUT;
-    // enable pull-up mode
-    io_conf.pull_up_en = 1;
-    gpio_config(&io_conf);
-
-    gpio_set_level(GPIO_OUTPUT_PIRPWR, 1);
-}
-
-void init_driver() {
-    // Init the I2C
-    i2c_master_init();
-
-    // Init the GPIO for IR detection
-    init_pir_gpio();
-
-    // Init RGB LED and Light ON Max white
-    i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x00, 0x01); // chip RESET
-    i2c_BCT3253_writeREG(
-        I2C_MASTER_NUM, 0x02,
-        0x40); // set overall brightness Max value 25.50mA, Step value 0.10mA
-    i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03, 0x0);  // set brightness 20mA (R)
-    i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x04, 0x0);  // set brightness 20mA (B)
-    i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x05, 0x0);  // set brightness 20mA (G)
-    i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x01, 0x07); // enable both LEDs ON
-
-    // Init GPIO Extender
-    i2c_MCP23016_writeREG(I2C_MASTER_NUM, mcp23016_IODIR0_addr, 0xFF);
-    i2c_MCP23016_writeREG(I2C_MASTER_NUM, mcp23016_IODIR1_addr, 0xF8);
-    // LED All ON, IR ON
-    i2c_MCP23016_writeREG(I2C_MASTER_NUM, mcp23016_GPIO1_addr, 0x06);
-    i2c_MCP23016_writeREG(I2C_MASTER_NUM, mcp23016_OLAT1_addr, 0x06);
-}
-
-unsigned int readADC_multiFilter() {
-    unsigned int *data_adc = (unsigned int *)malloc(sizeof(unsigned int));
-    // Read ADC with Multi-sampling
-    unsigned int adc_reading = 0;
-    unsigned int adc_last = 0;
-    int ret;
-    for (int i = 0; i < 20; i++) {
-        ret = i2c_mcp3221_readADC(I2C_MASTER_NUM, data_adc);
-        if (ret == ESP_OK) {
-            adc_last = *data_adc;
-            adc_reading += *data_adc;
-        } else
-            adc_reading += adc_last;
-        vTaskDelay(pdMS_TO_TICKS(20));
-    }
-    adc_reading /= 20;
-    ESP_LOGI(TAG, "ADC Filter : %d ", adc_reading);
-    return adc_reading;
-}
-
 void app_httpc_main() {
 
     ESP_LOGI(TAG, "start");
 
-    init_driver();
+    // board_init();    // TODO: why init again?
 
     xTaskCreate(&http_post_task, "http_post_task", 3072, NULL, 5, NULL);
 }
@@ -1938,10 +1501,7 @@ void http_post_data() {
 #if DUMMY_SENSOR
     *sensor_adc = 999;
 #else
-    // read real-time data
-    // i2c_mcp3221_readADC(I2C_MASTER_NUM, sensor_adc);
-    // read ADC with filter
-    *sensor_adc = readADC_multiFilter();
+    // TODO: get sensor_adc from app_weight
 #endif
 
 // read PIR
