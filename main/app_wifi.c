@@ -76,12 +76,41 @@
 
 #include "sdkconfig.h"
 
-static const char *TAG = "camera_httpc";
-
-static void example_event_callback(esp_blufi_cb_event_t event,
-                                   esp_blufi_cb_param_t *param);
+#define TAG "app_wifi"
 
 #define BLUFI_DEVICE_NAME "BLUFI_DEVICE"
+#define DATA_LENGTH 512    /*!< Data buffer length of test buffer */
+#define RW_TEST_LENGTH 128 /*!< Data length for r/w test, [0,DATA_LENGTH] */
+#define DELAY_TIME_BETWEEN_ITEMS_MS                                            \
+    1000 /*!< delay time between different test items */
+
+#define DEFAULT_VREF 3300 // Use adc2_vref_to_gpio() to obtain a better estimate
+#define NO_OF_SAMPLES 500 // Multisampling
+
+/* Constants that aren't configurable in menuconfig */
+#define SERVER_URL "lulupet.williamhsu.com.tw"
+#define HTTP_PHOTO_URL "http://lulupet.williamhsu.com.tw/imageHelper/"
+#define HTTPS_PHOTO_URL "https://lulupet.williamhsu.com.tw/imageHelper/"
+#define HTTP_RAW_URL "http://lulupet.williamhsu.com.tw/rawdata"
+#define HTTPS_ENABLE_URL "https://lulupet.williamhsu.com.tw/litter/enable/"
+#define HTTP_ENABLE_URL "http://lulupet.williamhsu.com.tw/litter/enable/"
+#define MAX_HTTP_RECV_BUFFER 512
+#define MAX_HTTP_OUTPUT_BUFFER 2048
+#define DUMMY_SENSOR 1
+#define WIFI_LIST_NUM 10
+
+/* NVS storage define */
+#define STORAGE_NAMESPACE "storage"
+#define NVSWIFISETTING "wificonfig"
+#define NVSWIFICHECK "wifichecked"
+#define NVSAPPLID "applid"
+#define NVSAPPTOKEN "apptoken"
+
+/* Test WiFi STA configuration */
+#define EXAMPLE_WIFI_SSID "SlingXCorp"
+#define EXAMPLE_WIFI_PASS "25413113"
+#define WIFI_TEST_MODE 0
+
 static uint8_t example_service_uuid128[32] = {
     /* LSB
        <-------------------------------------------------------------------------------->
@@ -90,7 +119,6 @@ static uint8_t example_service_uuid128[32] = {
     0xfb, 0x34, 0x9b, 0x5f, 0x80, 0x00, 0x00, 0x80,
     0x00, 0x10, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00,
 };
-
 // static uint8_t test_manufacturer[TEST_MANUFACTURER_DATA_LEN] =  {0x12, 0x23,
 // 0x45, 0x56};
 static esp_ble_adv_data_t example_adv_data = {
@@ -110,7 +138,6 @@ static esp_ble_adv_data_t example_adv_data = {
     .p_service_uuid = example_service_uuid128,
     .flag = 0x6,
 };
-
 static esp_ble_adv_params_t example_adv_params = {
     .adv_int_min = 0x100,
     .adv_int_max = 0x100,
@@ -121,86 +148,23 @@ static esp_ble_adv_params_t example_adv_params = {
     .channel_map = ADV_CHNL_ALL,
     .adv_filter_policy = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
 };
-
-#define DATA_LENGTH 512    /*!< Data buffer length of test buffer */
-#define RW_TEST_LENGTH 128 /*!< Data length for r/w test, [0,DATA_LENGTH] */
-#define DELAY_TIME_BETWEEN_ITEMS_MS                                            \
-    1000 /*!< delay time between different test items */
-
-#define DEFAULT_VREF 3300 // Use adc2_vref_to_gpio() to obtain a better estimate
-#define NO_OF_SAMPLES 500 // Multisampling
-
-/* Constants that aren't configurable in menuconfig */
-#define SERVER_URL "lulupet.williamhsu.com.tw"
-#define HTTP_PHOTO_URL "http://lulupet.williamhsu.com.tw/imageHelper/"
-#define HTTPS_PHOTO_URL "https://lulupet.williamhsu.com.tw/imageHelper/"
-#define HTTP_RAW_URL "http://lulupet.williamhsu.com.tw/rawdata"
-#define HTTPS_ENABLE_URL "https://lulupet.williamhsu.com.tw/litter/enable/"
-#define HTTP_ENABLE_URL "http://lulupet.williamhsu.com.tw/litter/enable/"
-#define MAX_HTTP_RECV_BUFFER 512
-#define MAX_HTTP_OUTPUT_BUFFER 2048
-
-#define DUMMY_SENSOR 1
-
-#define WIFI_LIST_NUM 10
-
-/* NVS storage define */
-#define STORAGE_NAMESPACE "storage"
-#define NVSWIFISETTING "wificonfig"
-#define NVSWIFICHECK "wifichecked"
-#define NVSAPPLID "applid"
-#define NVSAPPTOKEN "apptoken"
-
 static wifi_config_t sta_config;
 static wifi_config_t ap_config;
-
-/* Test WiFi STA configuration */
-#define EXAMPLE_WIFI_SSID "SlingXCorp"
-#define EXAMPLE_WIFI_PASS "25413113"
-#define WIFI_TEST_MODE 0
-
+static uint8_t server_if;
+static uint16_t conn_id;
 /* FreeRTOS event group to signal when we are connected & ready to make a
  * request */
 static EventGroupHandle_t wifi_event_group;
-
 /* The event group allows multiple bits for each event,
    but we only care about one event - are we connected
    to the AP with an IP? */
 const int CONNECTED_BIT = BIT0;
-
 /* store the station info for send back to phone */
 static bool gl_sta_connected = false;
 static uint8_t gl_sta_bssid[6];
 static uint8_t gl_sta_ssid[32];
 static int gl_sta_ssid_len;
-
-static void set_led_cmd(unsigned int led_cmd_load);
-
-void initialise_test_wifi(void);
-static esp_err_t event_handler(void *ctx, system_event_t *event);
-void obtain_time(void);
-void initialize_sntp(void);
-void check_time_sntp();
-
-void app_httpc_main();
-void http_post_task();
-void http_post_photo();
-void http_post_rawdata();
-void http_get_enable();
-void http_post_data();
-void capture_photo_only();
-esp_err_t initial_nvs();
-esp_err_t store_wifi_nvs();
-esp_err_t store_idtoken_nvs();
-esp_err_t clear_wifi_nvs();
-esp_err_t read_wifi_nvs();
-esp_err_t read_idtoken_nvs();
-esp_err_t load_wifi_nvs();
-int32_t wifi_check_nvs();
-void initialise_nvs_wifi(void);
-
 char urlbuffer[100];
-
 /* lulupet API id and token */
 char lulupet_lid[10] = "lid118";
 char lulupet_token[10] = "WebLid118";
@@ -212,119 +176,344 @@ extern const char howsmyssl_com_root_cert_pem_start[] asm(
 extern const char howsmyssl_com_root_cert_pem_end[] asm(
     "_binary_lulupet_com_root_cert_pem_end");
 
-static void set_led_cmd(unsigned int led_cmd_load) {
-    xQueueSend(led_cmd_que, (void *)&led_cmd_load, (TickType_t)0);
-}
+static void example_event_callback(esp_blufi_cb_event_t event,
+                                   esp_blufi_cb_param_t *param);
+static void initialise_nvs_wifi(void);
+static void set_led_cmd(unsigned int led_cmd_load);
+static void obtain_time(void);
+static void initialize_sntp(void);
+static void check_time_sntp(void);
+static void app_httpc_main(void);
+static void http_post_task(void *pvParameter);
+static void http_get_enable(void);
+static void http_post_data(void);
+static int32_t wifi_check_nvs(void);
+static esp_err_t event_handler(void *ctx, system_event_t *event);
+static esp_err_t initial_nvs(void);
+static esp_err_t store_wifi_nvs(void);
+static esp_err_t store_idtoken_nvs(void);
+static esp_err_t clear_wifi_nvs(void);
+static esp_err_t read_idtoken_nvs(void);
+static esp_err_t load_wifi_nvs(void);
 
-esp_err_t initial_nvs() {
-    // Initialize NVS
-    esp_err_t err;
-    err = nvs_flash_init();
-    BLUFI_INFO("NVS init");
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES ||
-        err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        BLUFI_INFO("NVS error, erase...");
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        err = nvs_flash_init();
+// unused static function
+#if 0
+static void capture_photo_only(void);
+static void http_post_rawdata(void);
+static void http_post_photo(void);
+static void initialise_test_wifi(void);
+static esp_err_t read_wifi_nvs(void);
+
+static void capture_photo_only(void) {
+
+    ESP_LOGI(TAG, "Free Heap Internal is:  %d Byte",
+             heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    ESP_LOGI(TAG, "Free Heap PSRAM    is:  %d Byte",
+             heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+
+    // Camera capture to fb
+    camera_fb_t *fb = NULL;
+
+    fb = esp_camera_fb_get();
+    if (!fb) {
+        ESP_LOGE(TAG, "Camera capture failed");
+        esp_camera_fb_return(fb);
+        ESP_LOGE(TAG, "Resolve Camera problem, reboot system");
+        while (1) {
+            // Nothing
+        }
+        return;
     }
-    BLUFI_INFO("NVS ok");
-    return ESP_OK;
+    ESP_LOGI(TAG, "Camera capture ok");
+
+    if (fb->format == PIXFORMAT_JPEG) {
+        ESP_LOGI(TAG, "Camera capture JPEG");
+    } else {
+        ESP_LOGI(TAG, "Camera capture RAW");
+    }
+
+    esp_camera_fb_return(fb);
+
+    return;
 }
 
-esp_err_t store_idtoken_nvs() {
-    nvs_handle_t handle;
+static void http_post_rawdata(void) {
+    
+    // xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, false, true,
+    // portMAX_DELAY);
+
     esp_err_t err;
 
-    // Open
-    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
-    if (err != ESP_OK)
-        return err;
+    esp_http_client_config_t config = {
+        .host = SERVER_URL,
+        .path = "/rawdata",
+        .event_handler = _http_event_handler,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&config);
 
-    // Write
-    ESP_ERROR_CHECK(nvs_set_blob(handle, NVSAPPLID, &lulupet_lid_get,
-                                 sizeof(lulupet_lid_get)));
-    ESP_ERROR_CHECK(nvs_set_blob(handle, NVSAPPTOKEN, &lulupet_token_get,
-                                 sizeof(lulupet_token_get)));
-    // Commit
-    ESP_ERROR_CHECK(nvs_commit(handle));
+    ESP_LOGI(TAG, "http post raw data");
 
-    // Close
-    nvs_close(handle);
-    return ESP_OK;
+    // read adc value
+    unsigned int *sensor_adc = (unsigned int *)malloc(sizeof(unsigned int));
+#if DUMMY_SENSOR
+    *sensor_adc = 999;
+#else
+    i2c_mcp3221_readADC(I2C_MASTER_NUM, sensor_adc);
+#endif
+
+// read PIR
+#if DUMMY_SENSOR
+    int sensor_pir = 1;
+#else
+    int sensor_pir = gpio_get_level(GPIO_INPUT_PIR);
+#endif
+
+    // read unix timestamp
+    time_t seconds;
+    seconds = time(NULL);
+
+    // const char *post_data =
+    // "lid=lid118&token=WebLid118&weight=100&pir=1&pic=http%3A%2F%2Fwww.google.com&tt=1603191727";
+    char *post_data = malloc(200);
+    sprintf(post_data, "lid=%s&token=%s&weight=%d&pir=%d&pic=%s&tt=%ld",
+            lulupet_lid, lulupet_token, *sensor_adc, sensor_pir, urlbuffer,
+            seconds);
+    ESP_LOGI(TAG, "post data:\r\n%s", post_data);
+
+    esp_http_client_set_url(client, "http://lulupet.williamhsu.com.tw/rawdata");
+    esp_http_client_set_method(client, HTTP_METHOD_POST);
+    esp_http_client_set_header(client, "accept", "application/json");
+    esp_http_client_set_header(client, "Content-Type",
+                               "application/x-www-form-urlencoded");
+    esp_http_client_set_header(
+        client, "X-CSRFToken",
+        "eA8ob2RLGxH6sQ7njh6pokrwNNTxR7gDqpfhPY9VyO8M9B8HZIaMFrKClihBLO39");
+    if ((err = esp_http_client_open(client, strlen(post_data))) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open HTTP connection: %s",
+                 esp_err_to_name(err));
+        esp_http_client_cleanup(client);
+        return;
+    }
+    int wlen = esp_http_client_write(client, post_data, strlen(post_data));
+    if (wlen < 0) {
+        ESP_LOGE(TAG, "Write failed");
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        return;
+    }
+    ESP_LOGI(TAG, "http client write, length =%d", wlen);
+    int content_length = esp_http_client_fetch_headers(client);
+    if (content_length < 0) {
+        ESP_LOGE(TAG, "Failed to fetch header");
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        return;
+    }
+    ESP_LOGI(TAG, "http client fetech, length =%d", content_length);
+    int total_read_len = 0, read_len;
+    char *buffer = malloc(MAX_HTTP_RECV_BUFFER + 1);
+    if (total_read_len < content_length &&
+        content_length <= MAX_HTTP_RECV_BUFFER) {
+        read_len = esp_http_client_read(client, buffer, content_length);
+        if (read_len <= 0) {
+            ESP_LOGE(TAG, "Error read data");
+        }
+        ESP_LOGI(TAG, "http client read:%s", buffer);
+        buffer[read_len] = 0;
+        ESP_LOGI(TAG, "read_len = %d", read_len);
+    }
+
+    free(sensor_adc);
+    esp_http_client_close(client);
+    ESP_LOGI(TAG, "http client close");
+
+    esp_http_client_cleanup(client);
+    ESP_LOGI(TAG, "http client cleanup");
 }
 
-esp_err_t store_wifi_nvs() {
-    nvs_handle_t handle;
+static void http_post_photo(void) {
+    // Camera capture to fb
+    camera_fb_t *fb = NULL;
+
+    fb = esp_camera_fb_get();
+    if (!fb) {
+        ESP_LOGE(TAG, "Camera capture failed");
+        return;
+    }
+    ESP_LOGI(TAG, "Camera capture ok");
+
+    size_t fb_len = 0;
+    if (fb->format == PIXFORMAT_JPEG) {
+        fb_len = fb->len;
+        ESP_LOGI(TAG, "Camera capture JPEG");
+    } else {
+        ESP_LOGI(TAG, "Camera capture RAW");
+    }
+
+    // HTTP HEAD process
+    int fileSize = fb_len;
+    // char contentType[80];
+    char *contentType = malloc(80);
+    strcpy(
+        contentType,
+        "multipart/form-data; boundary=----WebKitFormBoundarykqaGaA5tlVdQyckh");
+    // char boundary[50] = "----WebKitFormBoundarykqaGaA5tlVdQyckh";
+    char *boundary = malloc(50);
+    strcpy(boundary, "----WebKitFormBoundarykqaGaA5tlVdQyckh");
+    // char payloadHeader[200] = {0};
+    char *payloadHeader = malloc(200);
+    sprintf(payloadHeader,
+            "--%s\r\nContent-Disposition: form-data; name=\"image\"; "
+            "filename=\"%s\"\r\nContent-Type: image/jpeg\r\n\r\n",
+            boundary, "victor-test.jpg");
+
+    // char payloadFooter[50] = {0};
+    char *payloadFooter = malloc(50);
+    sprintf(payloadFooter, "\r\n--%s--\r\n", boundary);
+
+    int headLength = strlen(payloadHeader);
+    int footerLength = strlen(payloadFooter);
+    int contentLength = headLength + fileSize + footerLength;
+    ESP_LOGI(TAG, "payloadHeader length =%d", headLength);
+    ESP_LOGI(TAG, "picture length =%d", fileSize);
+    ESP_LOGI(TAG, "payloadFooter length =%d", footerLength);
+    ESP_LOGI(TAG, "contentLength length =%d", contentLength);
+    // char payloadLength[10] = {0};
+    char *payloadLength = malloc(10);
+    sprintf(payloadLength, "%d", contentLength);
+    ESP_LOGI(TAG, "payloadLength length =%s", payloadLength);
+    ESP_LOGI(TAG, "payloadHeader:\r\n%s", payloadHeader);
+    ESP_LOGI(TAG, "payloadFooter:\r\n%s", payloadFooter);
+
+    // HTTP process
+    esp_http_client_config_t config = {
+        .url = HTTP_PHOTO_URL,
+        .event_handler = _http_event_handler,
+    };
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    ESP_LOGI(TAG, "http client init");
+
+    // esp_http_client_open -> esp_http_client_write ->
+    // esp_http_client_fetch_headers -> esp_http_client_read (and option)
+    // esp_http_client_close.
+    esp_http_client_set_header(client, "Host", SERVER_URL);
+    esp_http_client_set_header(client, "Accept", "application/json");
+    esp_http_client_set_header(client, "Connection", "close");
+    esp_http_client_set_header(client, "Content-Type", contentType);
+    esp_http_client_set_header(client, "Content-Length", payloadLength);
+    esp_http_client_set_url(client, config.url);
+    esp_http_client_set_method(client, HTTP_METHOD_POST);
     esp_err_t err;
-    int32_t set_value = 1;
+    if ((err = esp_http_client_open(client, contentLength)) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open HTTP connection: %s",
+                 esp_err_to_name(err));
+        esp_http_client_cleanup(client);
+        return;
+    }
+    ESP_LOGI(TAG, "http client open");
+    int writeres;
+    writeres =
+        esp_http_client_write(client, payloadHeader, strlen(payloadHeader));
+    if (writeres < 0) {
+        ESP_LOGE(TAG, "Write failed");
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        return;
+    }
+    ESP_LOGI(TAG, "http client write, length =%d", writeres);
+    writeres = esp_http_client_write(client, (const char *)fb->buf, (fb->len));
+    if (writeres < 0) {
+        ESP_LOGE(TAG, "Write failed");
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        return;
+    }
+    ESP_LOGI(TAG, "http client write, length =%d", writeres);
+    writeres =
+        esp_http_client_write(client, payloadFooter, strlen(payloadFooter));
+    if (writeres < 0) {
+        ESP_LOGE(TAG, "Write failed");
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        return;
+    }
+    ESP_LOGI(TAG, "http client write, length =%d", writeres);
 
-    // Open
-    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
-    if (err != ESP_OK)
-        return err;
+    int content_length = esp_http_client_fetch_headers(client);
+    if (content_length < 0) {
+        ESP_LOGE(TAG, "Failed to fetch header");
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        return;
+    }
+    ESP_LOGI(TAG, "http client fetech, length =%d", content_length);
+    int total_read_len = 0, read_len;
+    // char *buffer = malloc(MAX_HTTP_RECV_BUFFER + 1);
+    char *buffer = malloc(MAX_HTTP_RECV_BUFFER + 1);
+    if (total_read_len < content_length &&
+        content_length <= MAX_HTTP_RECV_BUFFER) {
+        read_len = esp_http_client_read(client, buffer, content_length);
+        if (read_len <= 0) {
+            ESP_LOGE(TAG, "Error read data");
+        }
+        ESP_LOGI(TAG, "http client read:%s", buffer);
+        ESP_LOGI(TAG, "read_len = %d", read_len);
 
-    // Write
-    ESP_ERROR_CHECK(nvs_set_i32(handle, NVSWIFICHECK, set_value));
-    ESP_ERROR_CHECK(
-        nvs_set_blob(handle, NVSWIFISETTING, &sta_config, sizeof(sta_config)));
+        cJSON *pJsonRoot = cJSON_Parse(buffer);
+        if (NULL != pJsonRoot) {
+            cJSON *pImage = cJSON_GetObjectItem(pJsonRoot, "image");
+            if (NULL != pImage) {
+                cJSON *pURL = cJSON_GetObjectItem(pImage, "url");
+                if (NULL != pURL) {
+                    if (cJSON_IsString(pURL)) {
+                        sprintf(urlbuffer, "%s", pURL->valuestring);
+                        // ESP_LOGI(TAG, "get url:%s", pURL->valuestring);
+                        ESP_LOGI(TAG, "read url:%s", urlbuffer);
+                    } else
+                        ESP_LOGI(TAG, "url is not string");
+                } else
+                    ESP_LOGI(TAG, "get object url fail");
+            } else
+                ESP_LOGI(TAG, "get object image fail");
+        } else
+            ESP_LOGI(TAG, "json parse fail");
 
-    // Commit
-    ESP_ERROR_CHECK(nvs_commit(handle));
+        buffer[read_len] = 0;
+    }
+    free(buffer);
+    esp_http_client_close(client);
+    ESP_LOGI(TAG, "http client close");
+    esp_http_client_cleanup(client);
+    ESP_LOGI(TAG, "http client cleanup");
 
-    // Close
-    nvs_close(handle);
-    return ESP_OK;
+    esp_camera_fb_return(fb);
 }
 
-esp_err_t clear_wifi_nvs() {
-    nvs_handle_t handle;
-    esp_err_t err;
-    int32_t set_value = 0;
-    wifi_config_t wifi_config = {};
+static void initialise_test_wifi(void) {
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    ESP_ERROR_CHECK(nvs_flash_init());
 
-    // Open
-    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
-    if (err != ESP_OK)
-        return err;
-
-    // Write
-    ESP_ERROR_CHECK(nvs_set_i32(handle, NVSWIFICHECK, set_value));
-    ESP_ERROR_CHECK(nvs_set_blob(handle, NVSWIFISETTING, &wifi_config,
-                                 sizeof(wifi_config)));
-
-    // Commit
-    ESP_ERROR_CHECK(nvs_commit(handle));
-
-    // Close
-    nvs_close(handle);
-    return ESP_OK;
+    tcpip_adapter_init();
+    wifi_event_group = xEventGroupCreate();
+    ESP_ERROR_CHECK(esp_event_loop_init(event_handler, NULL));
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
+    wifi_config_t wifi_config = {
+        .sta =
+            {
+                .ssid = EXAMPLE_WIFI_SSID,
+                .password = EXAMPLE_WIFI_PASS,
+            },
+    };
+    BLUFI_INFO("Setting WiFi configuration SSID %s...", wifi_config.sta.ssid);
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_start());
 }
 
-esp_err_t read_idtoken_nvs() {
-    nvs_handle_t handle;
-    esp_err_t err;
-    uint32_t len;
-
-    // Open
-    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
-    if (err != ESP_OK)
-        return err;
-
-    // Read
-    len = sizeof(lulupet_lid_get);
-    ESP_ERROR_CHECK(nvs_get_blob(handle, NVSAPPLID, &lulupet_lid_get, &len));
-    len = sizeof(lulupet_token_get);
-    ESP_ERROR_CHECK(
-        nvs_get_blob(handle, NVSAPPTOKEN, &lulupet_token_get, &len));
-    BLUFI_INFO("Read lid   : %s", lulupet_lid_get);
-    BLUFI_INFO("Read token : %s", lulupet_token_get);
-
-    // Close
-    nvs_close(handle);
-    return ESP_OK;
-}
-
-esp_err_t read_wifi_nvs() {
+static esp_err_t read_wifi_nvs(void) {
     nvs_handle_t handle;
     esp_err_t err;
     int32_t value = 0;
@@ -350,7 +539,121 @@ esp_err_t read_wifi_nvs() {
     return ESP_OK;
 }
 
-esp_err_t load_wifi_nvs() {
+#endif
+
+static void set_led_cmd(unsigned int led_cmd_load) {
+    xQueueSend(led_cmd_que, (void *)&led_cmd_load, (TickType_t)0);
+}
+
+static esp_err_t initial_nvs(void) {
+    // Initialize NVS
+    esp_err_t err;
+    err = nvs_flash_init();
+    BLUFI_INFO("NVS init");
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES ||
+        err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        BLUFI_INFO("NVS error, erase...");
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    BLUFI_INFO("NVS ok");
+    return ESP_OK;
+}
+
+static esp_err_t store_idtoken_nvs(void) {
+    nvs_handle_t handle;
+    esp_err_t err;
+
+    // Open
+    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK)
+        return err;
+
+    // Write
+    ESP_ERROR_CHECK(nvs_set_blob(handle, NVSAPPLID, &lulupet_lid_get,
+                                 sizeof(lulupet_lid_get)));
+    ESP_ERROR_CHECK(nvs_set_blob(handle, NVSAPPTOKEN, &lulupet_token_get,
+                                 sizeof(lulupet_token_get)));
+    // Commit
+    ESP_ERROR_CHECK(nvs_commit(handle));
+
+    // Close
+    nvs_close(handle);
+    return ESP_OK;
+}
+
+static esp_err_t store_wifi_nvs(void) {
+    nvs_handle_t handle;
+    esp_err_t err;
+    int32_t set_value = 1;
+
+    // Open
+    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK)
+        return err;
+
+    // Write
+    ESP_ERROR_CHECK(nvs_set_i32(handle, NVSWIFICHECK, set_value));
+    ESP_ERROR_CHECK(
+        nvs_set_blob(handle, NVSWIFISETTING, &sta_config, sizeof(sta_config)));
+
+    // Commit
+    ESP_ERROR_CHECK(nvs_commit(handle));
+
+    // Close
+    nvs_close(handle);
+    return ESP_OK;
+}
+
+static esp_err_t clear_wifi_nvs(void) {
+    nvs_handle_t handle;
+    esp_err_t err;
+    int32_t set_value = 0;
+    wifi_config_t wifi_config = {};
+
+    // Open
+    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK)
+        return err;
+
+    // Write
+    ESP_ERROR_CHECK(nvs_set_i32(handle, NVSWIFICHECK, set_value));
+    ESP_ERROR_CHECK(nvs_set_blob(handle, NVSWIFISETTING, &wifi_config,
+                                 sizeof(wifi_config)));
+
+    // Commit
+    ESP_ERROR_CHECK(nvs_commit(handle));
+
+    // Close
+    nvs_close(handle);
+    return ESP_OK;
+}
+
+static esp_err_t read_idtoken_nvs(void) {
+    nvs_handle_t handle;
+    esp_err_t err;
+    uint32_t len;
+
+    // Open
+    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK)
+        return err;
+
+    // Read
+    len = sizeof(lulupet_lid_get);
+    ESP_ERROR_CHECK(nvs_get_blob(handle, NVSAPPLID, &lulupet_lid_get, &len));
+    len = sizeof(lulupet_token_get);
+    ESP_ERROR_CHECK(
+        nvs_get_blob(handle, NVSAPPTOKEN, &lulupet_token_get, &len));
+    BLUFI_INFO("Read lid   : %s", lulupet_lid_get);
+    BLUFI_INFO("Read token : %s", lulupet_token_get);
+
+    // Close
+    nvs_close(handle);
+    return ESP_OK;
+}
+
+static esp_err_t load_wifi_nvs(void) {
     nvs_handle_t handle;
     esp_err_t err;
     int32_t value = 0;
@@ -374,7 +677,7 @@ esp_err_t load_wifi_nvs() {
     return ESP_OK;
 }
 
-int32_t wifi_check_nvs() {
+static int32_t wifi_check_nvs(void) {
     nvs_handle_t handle;
     esp_err_t err;
     int32_t value = 0;
@@ -408,7 +711,7 @@ int32_t wifi_check_nvs() {
     return value;
 }
 
-void initialise_nvs_wifi(void) {
+static void initialise_nvs_wifi(void) {
     tcpip_adapter_init();
     wifi_event_group = xEventGroupCreate();
     ESP_ERROR_CHECK(esp_event_loop_init(event_handler, NULL));
@@ -420,29 +723,6 @@ void initialise_nvs_wifi(void) {
     // wifi_config.sta.password = sta_config.sta.password;
     strcpy((char *)wifi_config.sta.ssid, (char *)sta_config.sta.ssid);
     strcpy((char *)wifi_config.sta.password, (char *)sta_config.sta.password);
-    BLUFI_INFO("Setting WiFi configuration SSID %s...", wifi_config.sta.ssid);
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
-    ESP_ERROR_CHECK(esp_wifi_start());
-}
-
-void initialise_test_wifi(void) {
-    ESP_ERROR_CHECK(nvs_flash_erase());
-    ESP_ERROR_CHECK(nvs_flash_init());
-
-    tcpip_adapter_init();
-    wifi_event_group = xEventGroupCreate();
-    ESP_ERROR_CHECK(esp_event_loop_init(event_handler, NULL));
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
-    wifi_config_t wifi_config = {
-        .sta =
-            {
-                .ssid = EXAMPLE_WIFI_SSID,
-                .password = EXAMPLE_WIFI_PASS,
-            },
-    };
     BLUFI_INFO("Setting WiFi configuration SSID %s...", wifi_config.sta.ssid);
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
@@ -470,8 +750,6 @@ static esp_err_t event_handler(void *ctx, system_event_t *event) {
 }
 
 /* connect infor*/
-static uint8_t server_if;
-static uint16_t conn_id;
 static esp_err_t example_net_event_handler(void *ctx, system_event_t *event) {
     wifi_mode_t mode;
 
@@ -794,7 +1072,7 @@ static void example_gap_event_handler(esp_gap_ble_cb_event_t event,
     }
 }
 
-void blufi_run() {
+static void blufi_run(void) {
     esp_err_t ret;
 
     initialise_wifi();
@@ -850,7 +1128,7 @@ void blufi_run() {
     esp_blufi_profile_init();
 }
 
-void check_time_sntp() {
+static void check_time_sntp(void) {
     time_t now;
     struct tm timeinfo;
     time(&now);
@@ -877,7 +1155,7 @@ void check_time_sntp() {
     BLUFI_INFO("Seconds since January 1, 1970 = %ld\n", seconds);
 }
 
-void obtain_time(void) {
+static void obtain_time(void) {
     // ESP_ERROR_CHECK( nvs_flash_init() );
     // initialise_wifi();
     xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, false, true,
@@ -900,24 +1178,21 @@ void obtain_time(void) {
     // ESP_ERROR_CHECK( esp_wifi_stop() );
 }
 
-void initialize_sntp(void) {
+static void initialize_sntp(void) {
     BLUFI_INFO("Initializing SNTP");
     sntp_setoperatingmode(SNTP_OPMODE_POLL);
     sntp_setservername(0, "pool.ntp.org");
     sntp_init();
 }
 
-/*==============================================================================================*/
-void app_httpc_main() {
-
+static void app_httpc_main(void) {
     ESP_LOGI(TAG, "start");
-
     // board_init();    // TODO: why init again?
 
     xTaskCreate(&http_post_task, "http_post_task", 3072, NULL, 5, NULL);
 }
 
-void http_post_task() {
+static void http_post_task(void *pvParameter) {
     int i = 0;
 
     while (i < 300) {
@@ -970,259 +1245,7 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
     return ESP_OK;
 }
 
-void http_post_photo() {
-    // Camera capture to fb
-    camera_fb_t *fb = NULL;
-
-    fb = esp_camera_fb_get();
-    if (!fb) {
-        ESP_LOGE(TAG, "Camera capture failed");
-        return;
-    }
-    ESP_LOGI(TAG, "Camera capture ok");
-
-    size_t fb_len = 0;
-    if (fb->format == PIXFORMAT_JPEG) {
-        fb_len = fb->len;
-        ESP_LOGI(TAG, "Camera capture JPEG");
-    } else {
-        ESP_LOGI(TAG, "Camera capture RAW");
-    }
-
-    // HTTP HEAD process
-    int fileSize = fb_len;
-    // char contentType[80];
-    char *contentType = malloc(80);
-    strcpy(
-        contentType,
-        "multipart/form-data; boundary=----WebKitFormBoundarykqaGaA5tlVdQyckh");
-    // char boundary[50] = "----WebKitFormBoundarykqaGaA5tlVdQyckh";
-    char *boundary = malloc(50);
-    strcpy(boundary, "----WebKitFormBoundarykqaGaA5tlVdQyckh");
-    // char payloadHeader[200] = {0};
-    char *payloadHeader = malloc(200);
-    sprintf(payloadHeader,
-            "--%s\r\nContent-Disposition: form-data; name=\"image\"; "
-            "filename=\"%s\"\r\nContent-Type: image/jpeg\r\n\r\n",
-            boundary, "victor-test.jpg");
-
-    // char payloadFooter[50] = {0};
-    char *payloadFooter = malloc(50);
-    sprintf(payloadFooter, "\r\n--%s--\r\n", boundary);
-
-    int headLength = strlen(payloadHeader);
-    int footerLength = strlen(payloadFooter);
-    int contentLength = headLength + fileSize + footerLength;
-    ESP_LOGI(TAG, "payloadHeader length =%d", headLength);
-    ESP_LOGI(TAG, "picture length =%d", fileSize);
-    ESP_LOGI(TAG, "payloadFooter length =%d", footerLength);
-    ESP_LOGI(TAG, "contentLength length =%d", contentLength);
-    // char payloadLength[10] = {0};
-    char *payloadLength = malloc(10);
-    sprintf(payloadLength, "%d", contentLength);
-    ESP_LOGI(TAG, "payloadLength length =%s", payloadLength);
-    ESP_LOGI(TAG, "payloadHeader:\r\n%s", payloadHeader);
-    ESP_LOGI(TAG, "payloadFooter:\r\n%s", payloadFooter);
-
-    // HTTP process
-    esp_http_client_config_t config = {
-        .url = HTTP_PHOTO_URL,
-        .event_handler = _http_event_handler,
-    };
-
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    ESP_LOGI(TAG, "http client init");
-
-    // esp_http_client_open -> esp_http_client_write ->
-    // esp_http_client_fetch_headers -> esp_http_client_read (and option)
-    // esp_http_client_close.
-    esp_http_client_set_header(client, "Host", SERVER_URL);
-    esp_http_client_set_header(client, "Accept", "application/json");
-    esp_http_client_set_header(client, "Connection", "close");
-    esp_http_client_set_header(client, "Content-Type", contentType);
-    esp_http_client_set_header(client, "Content-Length", payloadLength);
-    esp_http_client_set_url(client, config.url);
-    esp_http_client_set_method(client, HTTP_METHOD_POST);
-    esp_err_t err;
-    if ((err = esp_http_client_open(client, contentLength)) != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to open HTTP connection: %s",
-                 esp_err_to_name(err));
-        esp_http_client_cleanup(client);
-        return;
-    }
-    ESP_LOGI(TAG, "http client open");
-    int writeres;
-    writeres =
-        esp_http_client_write(client, payloadHeader, strlen(payloadHeader));
-    if (writeres < 0) {
-        ESP_LOGE(TAG, "Write failed");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        return;
-    }
-    ESP_LOGI(TAG, "http client write, length =%d", writeres);
-    writeres = esp_http_client_write(client, (const char *)fb->buf, (fb->len));
-    if (writeres < 0) {
-        ESP_LOGE(TAG, "Write failed");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        return;
-    }
-    ESP_LOGI(TAG, "http client write, length =%d", writeres);
-    writeres =
-        esp_http_client_write(client, payloadFooter, strlen(payloadFooter));
-    if (writeres < 0) {
-        ESP_LOGE(TAG, "Write failed");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        return;
-    }
-    ESP_LOGI(TAG, "http client write, length =%d", writeres);
-
-    int content_length = esp_http_client_fetch_headers(client);
-    if (content_length < 0) {
-        ESP_LOGE(TAG, "Failed to fetch header");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        return;
-    }
-    ESP_LOGI(TAG, "http client fetech, length =%d", content_length);
-    int total_read_len = 0, read_len;
-    // char *buffer = malloc(MAX_HTTP_RECV_BUFFER + 1);
-    char *buffer = malloc(MAX_HTTP_RECV_BUFFER + 1);
-    if (total_read_len < content_length &&
-        content_length <= MAX_HTTP_RECV_BUFFER) {
-        read_len = esp_http_client_read(client, buffer, content_length);
-        if (read_len <= 0) {
-            ESP_LOGE(TAG, "Error read data");
-        }
-        ESP_LOGI(TAG, "http client read:%s", buffer);
-        ESP_LOGI(TAG, "read_len = %d", read_len);
-
-        cJSON *pJsonRoot = cJSON_Parse(buffer);
-        if (NULL != pJsonRoot) {
-            cJSON *pImage = cJSON_GetObjectItem(pJsonRoot, "image");
-            if (NULL != pImage) {
-                cJSON *pURL = cJSON_GetObjectItem(pImage, "url");
-                if (NULL != pURL) {
-                    if (cJSON_IsString(pURL)) {
-                        sprintf(urlbuffer, "%s", pURL->valuestring);
-                        // ESP_LOGI(TAG, "get url:%s", pURL->valuestring);
-                        ESP_LOGI(TAG, "read url:%s", urlbuffer);
-                    } else
-                        ESP_LOGI(TAG, "url is not string");
-                } else
-                    ESP_LOGI(TAG, "get object url fail");
-            } else
-                ESP_LOGI(TAG, "get object image fail");
-        } else
-            ESP_LOGI(TAG, "json parse fail");
-
-        buffer[read_len] = 0;
-    }
-    free(buffer);
-    esp_http_client_close(client);
-    ESP_LOGI(TAG, "http client close");
-    esp_http_client_cleanup(client);
-    ESP_LOGI(TAG, "http client cleanup");
-
-    esp_camera_fb_return(fb);
-}
-
-void http_post_rawdata() {
-    // xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, false, true,
-    // portMAX_DELAY);
-
-    esp_err_t err;
-
-    esp_http_client_config_t config = {
-        .host = SERVER_URL,
-        .path = "/rawdata",
-        .event_handler = _http_event_handler,
-    };
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-
-    ESP_LOGI(TAG, "http post raw data");
-
-    // read adc value
-    unsigned int *sensor_adc = (unsigned int *)malloc(sizeof(unsigned int));
-#if DUMMY_SENSOR
-    *sensor_adc = 999;
-#else
-    i2c_mcp3221_readADC(I2C_MASTER_NUM, sensor_adc);
-#endif
-
-// read PIR
-#if DUMMY_SENSOR
-    int sensor_pir = 1;
-#else
-    int sensor_pir = gpio_get_level(GPIO_INPUT_PIR);
-#endif
-
-    // read unix timestamp
-    time_t seconds;
-    seconds = time(NULL);
-
-    // const char *post_data =
-    // "lid=lid118&token=WebLid118&weight=100&pir=1&pic=http%3A%2F%2Fwww.google.com&tt=1603191727";
-    char *post_data = malloc(200);
-    sprintf(post_data, "lid=%s&token=%s&weight=%d&pir=%d&pic=%s&tt=%ld",
-            lulupet_lid, lulupet_token, *sensor_adc, sensor_pir, urlbuffer,
-            seconds);
-    ESP_LOGI(TAG, "post data:\r\n%s", post_data);
-
-    esp_http_client_set_url(client, "http://lulupet.williamhsu.com.tw/rawdata");
-    esp_http_client_set_method(client, HTTP_METHOD_POST);
-    esp_http_client_set_header(client, "accept", "application/json");
-    esp_http_client_set_header(client, "Content-Type",
-                               "application/x-www-form-urlencoded");
-    esp_http_client_set_header(
-        client, "X-CSRFToken",
-        "eA8ob2RLGxH6sQ7njh6pokrwNNTxR7gDqpfhPY9VyO8M9B8HZIaMFrKClihBLO39");
-    if ((err = esp_http_client_open(client, strlen(post_data))) != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to open HTTP connection: %s",
-                 esp_err_to_name(err));
-        esp_http_client_cleanup(client);
-        return;
-    }
-    int wlen = esp_http_client_write(client, post_data, strlen(post_data));
-    if (wlen < 0) {
-        ESP_LOGE(TAG, "Write failed");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        return;
-    }
-    ESP_LOGI(TAG, "http client write, length =%d", wlen);
-    int content_length = esp_http_client_fetch_headers(client);
-    if (content_length < 0) {
-        ESP_LOGE(TAG, "Failed to fetch header");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        return;
-    }
-    ESP_LOGI(TAG, "http client fetech, length =%d", content_length);
-    int total_read_len = 0, read_len;
-    char *buffer = malloc(MAX_HTTP_RECV_BUFFER + 1);
-    if (total_read_len < content_length &&
-        content_length <= MAX_HTTP_RECV_BUFFER) {
-        read_len = esp_http_client_read(client, buffer, content_length);
-        if (read_len <= 0) {
-            ESP_LOGE(TAG, "Error read data");
-        }
-        ESP_LOGI(TAG, "http client read:%s", buffer);
-        buffer[read_len] = 0;
-        ESP_LOGI(TAG, "read_len = %d", read_len);
-    }
-
-    free(sensor_adc);
-    esp_http_client_close(client);
-    ESP_LOGI(TAG, "http client close");
-
-    esp_http_client_cleanup(client);
-    ESP_LOGI(TAG, "http client cleanup");
-}
-
-void http_get_enable() {
+static void http_get_enable(void) {
 
     esp_http_client_config_t config = {
         .url = HTTP_ENABLE_URL,
@@ -1270,7 +1293,7 @@ void http_get_enable() {
     ESP_LOGI(TAG, "http client cleanup");
 }
 
-void http_post_data() {
+static void http_post_data(void) {
 
     ESP_LOGI(TAG, "Free Heap Internal is:  %d Byte",
              heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
@@ -1549,40 +1572,7 @@ void http_post_data() {
     return;
 }
 
-void capture_photo_only() {
-
-    ESP_LOGI(TAG, "Free Heap Internal is:  %d Byte",
-             heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-    ESP_LOGI(TAG, "Free Heap PSRAM    is:  %d Byte",
-             heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-
-    // Camera capture to fb
-    camera_fb_t *fb = NULL;
-
-    fb = esp_camera_fb_get();
-    if (!fb) {
-        ESP_LOGE(TAG, "Camera capture failed");
-        esp_camera_fb_return(fb);
-        ESP_LOGE(TAG, "Resolve Camera problem, reboot system");
-        while (1) {
-            // Nothing
-        }
-        return;
-    }
-    ESP_LOGI(TAG, "Camera capture ok");
-
-    if (fb->format == PIXFORMAT_JPEG) {
-        ESP_LOGI(TAG, "Camera capture JPEG");
-    } else {
-        ESP_LOGI(TAG, "Camera capture RAW");
-    }
-
-    esp_camera_fb_return(fb);
-
-    return;
-}
-
-void app_wifi_main() {
+void app_wifi_main(void) {
     // Creat message queue and LED task
     BLUFI_INFO("Start WiFi");
 
