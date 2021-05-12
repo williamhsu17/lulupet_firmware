@@ -1,6 +1,7 @@
 #pragma once
 
 #include "stdbool.h"
+#include "stdint.h"
 
 #define BLUFI_EXAMPLE_TAG "BLUFI_EXAMPLE"
 #define BLUFI_INFO(fmt, ...) ESP_LOGI(BLUFI_EXAMPLE_TAG, fmt, ##__VA_ARGS__)
