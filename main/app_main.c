@@ -25,6 +25,7 @@
 //#include "app_camera.h"
 #include "app_cmd.h"
 #include "app_weight.h"
+#include "app_led.h"
 #include "app_wifi.h"
 #include "esp_log.h"
 #include "include/board_driver.h"
