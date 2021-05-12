@@ -163,6 +163,7 @@ extern const char howsmyssl_com_root_cert_pem_start[] asm(
 extern const char howsmyssl_com_root_cert_pem_end[] asm(
     "_binary_lulupet_com_root_cert_pem_end");
 
+static esp_err_t esp_err_print(esp_err_t err, const char *func, uint32_t line);
 static void example_event_callback(esp_blufi_cb_event_t event,
                                    esp_blufi_cb_param_t *param);
 static void initialise_nvs_wifi(void);
@@ -174,14 +175,18 @@ static void app_httpc_main(void);
 static void http_post_task(void *pvParameter);
 static void http_get_enable(void);
 static void http_post_data(void);
-static int32_t wifi_check_nvs(void);
+
+static esp_err_t nvs_initialize(void);
+static int32_t nvs_read_wifichecked(void);
+static esp_err_t nvs_write_wifi_val(int32_t set_value,
+                                    wifi_config_t *wifi_config);
+static esp_err_t nvs_set_wifi_val(void);
+static esp_err_t nvs_reset_wifi_val(void);
+static esp_err_t nvs_read_lid_token(void);
+static esp_err_t nvs_read_wifi_config(void);
+static esp_err_t nvs_write_lid_token(void);
+
 static esp_err_t event_handler(void *ctx, system_event_t *event);
-static esp_err_t initial_nvs(void);
-static esp_err_t store_wifi_nvs(void);
-static esp_err_t store_idtoken_nvs(void);
-static esp_err_t clear_wifi_nvs(void);
-static esp_err_t read_idtoken_nvs(void);
-static esp_err_t load_wifi_nvs(void);
 
 // unused static function
 #if 0
@@ -528,33 +533,41 @@ static esp_err_t read_wifi_nvs(void) {
 
 #endif
 
+static esp_err_t esp_err_print(esp_err_t err, const char *func, uint32_t line) {
+    ESP_LOGE(TAG, "err:%s %s:L%d", esp_err_to_name(err), func, line);
+    return err;
+}
+
 static void set_led_cmd(unsigned int led_cmd_load) {
     xQueueSend(led_cmd_que, (void *)&led_cmd_load, (TickType_t)0);
 }
 
-static esp_err_t initial_nvs(void) {
+static esp_err_t nvs_initialize(void) {
     // Initialize NVS
     esp_err_t err;
     err = nvs_flash_init();
-    BLUFI_INFO("NVS init");
+    ESP_LOGI(TAG, "nvs init");
     if (err == ESP_ERR_NVS_NO_FREE_PAGES ||
         err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        BLUFI_INFO("NVS error, erase...");
+        ESP_LOGI(TAG, "nvs error, erase");
         ESP_ERROR_CHECK(nvs_flash_erase());
         err = nvs_flash_init();
+        if (err != ESP_OK)
+            esp_err_print(err, __func__, __LINE__);
     }
-    BLUFI_INFO("NVS ok");
-    return ESP_OK;
+    ESP_LOGI(TAG, "nvs readdy");
+    return err;
 }
 
-static esp_err_t store_idtoken_nvs(void) {
+static esp_err_t nvs_write_lid_token(void) {
     nvs_handle_t handle;
     esp_err_t err;
 
     // Open
     err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
-    if (err != ESP_OK)
-        return err;
+    if (err != ESP_OK) {
+        return esp_err_print(err, __func__, __LINE__);
+    }
 
     // Write
     ESP_ERROR_CHECK(nvs_set_blob(handle, NVSAPPLID, &lulupet_lid_get,
@@ -562,69 +575,64 @@ static esp_err_t store_idtoken_nvs(void) {
     ESP_ERROR_CHECK(nvs_set_blob(handle, NVSAPPTOKEN, &lulupet_token_get,
                                  sizeof(lulupet_token_get)));
     // Commit
-    ESP_ERROR_CHECK(nvs_commit(handle));
+    err = nvs_commit(handle);
+    if (err != ESP_OK) {
+        return esp_err_print(err, __func__, __LINE__);
+    }
 
     // Close
     nvs_close(handle);
     return ESP_OK;
 }
 
-static esp_err_t store_wifi_nvs(void) {
+static esp_err_t nvs_write_wifi_val(int32_t set_value,
+                                    wifi_config_t *wifi_config) {
     nvs_handle_t handle;
     esp_err_t err;
-    int32_t set_value = 1;
 
     // Open
     err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
-    if (err != ESP_OK)
-        return err;
+    if (err != ESP_OK) {
+        return esp_err_print(err, __func__, __LINE__);
+    }
 
     // Write
     ESP_ERROR_CHECK(nvs_set_i32(handle, NVSWIFICHECK, set_value));
-    ESP_ERROR_CHECK(
-        nvs_set_blob(handle, NVSWIFISETTING, &sta_config, sizeof(sta_config)));
+    ESP_ERROR_CHECK(nvs_set_blob(handle, NVSWIFISETTING, wifi_config,
+                                 sizeof(wifi_config_t)));
 
     // Commit
-    ESP_ERROR_CHECK(nvs_commit(handle));
+    err = nvs_commit(handle);
+    if (err != ESP_OK) {
+        return esp_err_print(err, __func__, __LINE__);
+    }
 
     // Close
     nvs_close(handle);
     return ESP_OK;
 }
 
-static esp_err_t clear_wifi_nvs(void) {
-    nvs_handle_t handle;
-    esp_err_t err;
-    int32_t set_value = 0;
+static esp_err_t nvs_set_wifi_val(void) {
+    ESP_LOGI(TAG, "%s:L%d", __func__, __LINE__);
+    return nvs_write_wifi_val(1, &sta_config);
+}
+
+static esp_err_t nvs_reset_wifi_val(void) {
+    ESP_LOGI(TAG, "%s:L%d", __func__, __LINE__);
     wifi_config_t wifi_config = {};
-
-    // Open
-    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
-    if (err != ESP_OK)
-        return err;
-
-    // Write
-    ESP_ERROR_CHECK(nvs_set_i32(handle, NVSWIFICHECK, set_value));
-    ESP_ERROR_CHECK(nvs_set_blob(handle, NVSWIFISETTING, &wifi_config,
-                                 sizeof(wifi_config)));
-
-    // Commit
-    ESP_ERROR_CHECK(nvs_commit(handle));
-
-    // Close
-    nvs_close(handle);
-    return ESP_OK;
+    return nvs_write_wifi_val(0, &wifi_config);
 }
 
-static esp_err_t read_idtoken_nvs(void) {
+static esp_err_t nvs_read_lid_token(void) {
     nvs_handle_t handle;
     esp_err_t err;
     uint32_t len;
 
     // Open
     err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
-    if (err != ESP_OK)
-        return err;
+    if (err != ESP_OK) {
+        return esp_err_print(err, __func__, __LINE__);
+    }
 
     // Read
     len = sizeof(lulupet_lid_get);
@@ -632,70 +640,68 @@ static esp_err_t read_idtoken_nvs(void) {
     len = sizeof(lulupet_token_get);
     ESP_ERROR_CHECK(
         nvs_get_blob(handle, NVSAPPTOKEN, &lulupet_token_get, &len));
-    BLUFI_INFO("Read lid   : %s", lulupet_lid_get);
-    BLUFI_INFO("Read token : %s", lulupet_token_get);
+    ESP_LOGI(TAG, "nvs lid   : %s", lulupet_lid_get);
+    ESP_LOGI(TAG, "nvs token : %s", lulupet_token_get);
 
     // Close
     nvs_close(handle);
     return ESP_OK;
 }
 
-static esp_err_t load_wifi_nvs(void) {
+static esp_err_t nvs_read_wifi_config(void) {
     nvs_handle_t handle;
     esp_err_t err;
-    int32_t value = 0;
-    // wifi_config_t wifi_config_stored;
     memset(&sta_config, 0x0, sizeof(sta_config));
     uint32_t len = sizeof(sta_config);
 
     // Open
     err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
-    if (err != ESP_OK)
-        return err;
+    if (err != ESP_OK) {
+        return esp_err_print(err, __func__, __LINE__);
+    }
 
     // Read
-    ESP_ERROR_CHECK(nvs_get_i32(handle, NVSWIFICHECK, &value));
     ESP_ERROR_CHECK(nvs_get_blob(handle, NVSWIFISETTING, &sta_config, &len));
-    BLUFI_INFO("Read WiFi check tag : %d", value);
-    BLUFI_INFO("Read WiFi configure ssid:%s passwd:%s", sta_config.sta.ssid,
-               sta_config.sta.password);
+    ESP_LOGI(TAG, "nvs read WiFi configure ssid:%s passwd:%s",
+             sta_config.sta.ssid, sta_config.sta.password);
     // Close
     nvs_close(handle);
     return ESP_OK;
 }
 
-static int32_t wifi_check_nvs(void) {
+static int32_t nvs_read_wifichecked(void) {
     nvs_handle_t handle;
     esp_err_t err;
-    int32_t value = 0;
+    int32_t wifichecked_value = 0;
+    int32_t set_value = 0;
+    wifi_config_t wifi_config = {};
 
     // Open
     err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
     if (err != ESP_OK) {
-        BLUFI_INFO("NVS open error!");
-        initial_nvs();
-        clear_wifi_nvs();
-        return value;
+        esp_err_print(err, __FUNCTION__, __LINE__);
+        nvs_initialize();
+        nvs_reset_wifi_val();
+        return wifichecked_value;
     }
 
-    // Read
-    // ESP_ERROR_CHECK ( nvs_get_i32(handle,  NVSWIFICHECK,   &value) );
-    err = nvs_get_i32(handle, NVSWIFICHECK, &value);
+    // read nvs NVSWIFICHECK
+    err = nvs_get_i32(handle, NVSWIFICHECK, &wifichecked_value);
     if (err != ESP_OK) {
-        BLUFI_INFO("NVS NVSWIFICHECK not found");
-        BLUFI_INFO("NVS WiFi Parameter create");
-        int32_t set_value = 0;
-        wifi_config_t wifi_config = {};
+        // if can not read nvs NVSWIFICHECK, write the default value into nvs
+        ESP_LOGW(TAG, "nvs wifichecked not found");
+        ESP_LOGW(TAG, "nvs write wifichecked/wificonfig");
         // Write
         ESP_ERROR_CHECK(nvs_set_i32(handle, NVSWIFICHECK, set_value));
         ESP_ERROR_CHECK(nvs_set_blob(handle, NVSWIFISETTING, &wifi_config,
                                      sizeof(wifi_config)));
-        nvs_get_i32(handle, NVSWIFICHECK, &value);
+        nvs_get_i32(handle, NVSWIFICHECK, &wifichecked_value);
     }
-    BLUFI_INFO("Read WiFi check tag : %d", value);
+    ESP_LOGI(TAG, "nvs read wifichecked : %d", wifichecked_value);
+
     // Close
     nvs_close(handle);
-    return value;
+    return wifichecked_value;
 }
 
 static void initialise_nvs_wifi(void) {
@@ -1566,20 +1572,20 @@ void app_wifi_main(void) {
     // Read WiFi setting from NVS
     // IF YES, connect to WiFi
     // IF NO , run BlueFi
-    initial_nvs();
+    nvs_initialize();
     // set_led_cmd(LED_ALL_OFF);
-    if (wifi_check_nvs() == 1) {
+    if (nvs_read_wifichecked() == 1) {
         BLUFI_INFO("Load lid token from NVS");
-        read_idtoken_nvs();
+        nvs_read_lid_token();
         BLUFI_INFO("Load WiFi Setting from NVS");
-        load_wifi_nvs();
+        nvs_read_wifi_config();
         initialise_nvs_wifi();
         xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, false, true,
                             10000 / portTICK_PERIOD_MS);
         if (CONNECTED_BIT != true) {
             BLUFI_INFO("Can't Connected to AP");
             BLUFI_INFO("Clear NVS setting");
-            clear_wifi_nvs();
+            nvs_reset_wifi_val();
             set_led_cmd(LED_RED_SOLID);
             while (1) {
                 vTaskDelay(10000 / portTICK_PERIOD_MS);
@@ -1591,7 +1597,7 @@ void app_wifi_main(void) {
         BLUFI_INFO("Update time from SNTP");
         vTaskDelay(30000 / portTICK_PERIOD_MS);
         BLUFI_INFO("Clear NVS setting");
-        clear_wifi_nvs();
+        nvs_reset_wifi_val();
     } else {
         BLUFI_INFO("No WiFi Setting in NVS, run BlueFi");
         set_led_cmd(LED_BLUE_2HZ);
@@ -1602,9 +1608,9 @@ void app_wifi_main(void) {
         vTaskDelay(500 / portTICK_PERIOD_MS);
         BLUFI_INFO("Enable lid and token");
         http_get_enable();
-        store_idtoken_nvs();
+        nvs_write_lid_token();
         BLUFI_INFO("Store WiFi setting to NVS");
-        store_wifi_nvs();
+        nvs_set_wifi_val();
         // TBD
         set_led_cmd(LED_ALL_OFF);
         vTaskDelay(5000 / portTICK_PERIOD_MS);
