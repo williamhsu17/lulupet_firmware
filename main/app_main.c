@@ -38,6 +38,7 @@ void app_main() {
 #if (FUNC_CMD_TASK)
     app_cmd_main(); // Init command line interface
 #endif
+    app_led_main();    // Init led task
     app_weight_main(); // Init weight task
-    // app_wifi_main();   // Init and Connect to WiFi
+    app_wifi_main();   // Init and Connect to WiFi
 }
