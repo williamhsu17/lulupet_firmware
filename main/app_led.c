@@ -62,7 +62,7 @@ static void led_task(void *pvParameter) {
                                      0x0); // set brightness 20mA (G)
             }
             break;
-        case LED_WHITE_CNT:
+        case LED_WHITE_SOLID:
             if (cmd_update) {
                 // LED White
                 i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03,
@@ -73,7 +73,7 @@ static void led_task(void *pvParameter) {
                                      0xC8); // set brightness 20mA (G)
             }
             break;
-        case LED_RED_CNT:
+        case LED_RED_SOLID:
             if (cmd_update) {
                 // LED Green
                 i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03,
@@ -84,7 +84,7 @@ static void led_task(void *pvParameter) {
                                      0x0); // set brightness 20mA (G)
             }
             break;
-        case LED_BLUE_CNT:
+        case LED_BLUE_SOLID:
             if (cmd_update) {
                 // LED Green
                 i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03,
@@ -95,7 +95,7 @@ static void led_task(void *pvParameter) {
                                      0x0); // set brightness 20mA (G)
             }
             break;
-        case LED_GREEN_CNT:
+        case LED_GREEN_SOLID:
             if (cmd_update) {
                 // LED Green
                 i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03,

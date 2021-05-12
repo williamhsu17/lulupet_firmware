@@ -1580,12 +1580,12 @@ void app_wifi_main(void) {
             BLUFI_INFO("Can't Connected to AP");
             BLUFI_INFO("Clear NVS setting");
             clear_wifi_nvs();
-            set_led_cmd(LED_RED_CNT);
+            set_led_cmd(LED_RED_SOLID);
             while (1) {
                 vTaskDelay(10000 / portTICK_PERIOD_MS);
             }
         }
-        set_led_cmd(LED_GREEN_CNT);
+        set_led_cmd(LED_GREEN_SOLID);
         BLUFI_INFO("Connected to AP");
         check_time_sntp();
         BLUFI_INFO("Update time from SNTP");
