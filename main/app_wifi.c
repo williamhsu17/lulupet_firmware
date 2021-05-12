@@ -22,16 +22,7 @@
  * SOFTWARE.
  */
 #include "app_wifi.h"
-#include "include/app_led.h"
-#include "include/board_driver.h"
-#include "include/util.h"
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/time.h>
-#include <time.h>
-
+#include "../../json/cJSON/cJSON.h"
 #include "blufi_example.h"
 #include "esp_attr.h"
 #include "esp_blufi_api.h"
@@ -45,36 +36,32 @@
 #include "esp_gap_ble_api.h"
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
-#include "esp_http_server.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "fb_gfx.h"
-#include "img_converters.h"
-#include "mbedtls/base64.h"
-#include "nvs.h"
-#include "nvs_flash.h"
-#include <esp_err.h>
-
-#include "sdkconfig.h"
-
-#include "driver/gpio.h"
-#include "driver/i2c.h"
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-
+#include "img_converters.h"
+#include "include/app_led.h"
+#include "include/board_driver.h"
+#include "include/util.h"
 #include "lwip/apps/sntp.h"
 #include "lwip/err.h"
-
-//#include "cJSON.h"
-#include "../../json/cJSON/cJSON.h"
-
+#include "mbedtls/base64.h"
+#include "nvs.h"
+#include "nvs_flash.h"
 #include "sdkconfig.h"
+#include <esp_err.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/time.h>
+#include <time.h>
 
 #define TAG "app_wifi"
 
