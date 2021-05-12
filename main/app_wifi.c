@@ -22,6 +22,7 @@
  * SOFTWARE.
  */
 #include "app_wifi.h"
+#include "include/app_led.h"
 #include "include/board_driver.h"
 #include "include/util.h"
 
@@ -150,14 +151,6 @@ static esp_ble_adv_params_t example_adv_params = {
 #define NVSAPPLID "applid"
 #define NVSAPPTOKEN "apptoken"
 
-/* LED CMD */
-#define LED_ALL_OFF 0
-#define LED_WHITE_CNT 1
-#define LED_RED_CNT 2
-#define LED_BLUE_CNT 3
-#define LED_GREEN_CNT 4
-#define LED_BLUE_2HZ 5
-
 static wifi_config_t sta_config;
 static wifi_config_t ap_config;
 
@@ -165,9 +158,6 @@ static wifi_config_t ap_config;
 #define EXAMPLE_WIFI_SSID "SlingXCorp"
 #define EXAMPLE_WIFI_PASS "25413113"
 #define WIFI_TEST_MODE 0
-
-// Message Queue for LED task
-QueueHandle_t qledCMD = NULL;
 
 /* FreeRTOS event group to signal when we are connected & ready to make a
  * request */
@@ -184,8 +174,8 @@ static uint8_t gl_sta_bssid[6];
 static uint8_t gl_sta_ssid[32];
 static int gl_sta_ssid_len;
 
-void led_cmd_task(void *pvParameter);
-void set_led_cmd(unsigned int ledCMDload);
+static void set_led_cmd(unsigned int led_cmd_load);
+
 void initialise_test_wifi(void);
 static esp_err_t event_handler(void *ctx, system_event_t *event);
 void obtain_time(void);
@@ -222,190 +212,8 @@ extern const char howsmyssl_com_root_cert_pem_start[] asm(
 extern const char howsmyssl_com_root_cert_pem_end[] asm(
     "_binary_lulupet_com_root_cert_pem_end");
 
-void app_wifi_main() {
-    // Creat message queue and LED task
-    BLUFI_INFO("Start WiFi ...");
-    qledCMD = xQueueCreate(20, sizeof(unsigned int));
-    while (qledCMD == NULL) {
-        BLUFI_INFO("Queue creation failed");
-        vTaskDelay(1000 / portTICK_PERIOD_MS); // wait for a second
-        BLUFI_INFO("Queue re-create ...");
-        qledCMD = xQueueCreate(20, sizeof(unsigned int));
-    }
-    BLUFI_INFO("Queue is created");
-    BLUFI_INFO("Create LED CMD task");
-    xTaskCreate(&led_cmd_task, "led_cmd_task", 2048, NULL, 5, NULL);
-
-    // Read WiFi setting from NVS
-    // IF YES, connect to WiFi
-    // IF NO , run BlueFi
-    initial_nvs();
-    // set_led_cmd(LED_ALL_OFF);
-    if (wifi_check_nvs() == 1) {
-        BLUFI_INFO("Load lid token from NVS");
-        read_idtoken_nvs();
-        BLUFI_INFO("Load WiFi Setting from NVS");
-        load_wifi_nvs();
-        initialise_nvs_wifi();
-        xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, false, true,
-                            10000 / portTICK_PERIOD_MS);
-        if (CONNECTED_BIT != true) {
-            BLUFI_INFO("Can't Connected to AP");
-            BLUFI_INFO("Clear NVS setting");
-            clear_wifi_nvs();
-            set_led_cmd(LED_RED_CNT);
-            while (1) {
-                vTaskDelay(10000 / portTICK_PERIOD_MS);
-            }
-        }
-        set_led_cmd(LED_GREEN_CNT);
-        BLUFI_INFO("Connected to AP");
-        check_time_sntp();
-        BLUFI_INFO("Update time from SNTP");
-        vTaskDelay(30000 / portTICK_PERIOD_MS);
-        BLUFI_INFO("Clear NVS setting");
-        clear_wifi_nvs();
-    } else {
-        BLUFI_INFO("No WiFi Setting in NVS, run BlueFi");
-        set_led_cmd(LED_BLUE_2HZ);
-        blufi_run();
-        xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, false, true,
-                            portMAX_DELAY);
-        BLUFI_INFO("Connected to AP");
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-        BLUFI_INFO("Enable lid and token");
-        http_get_enable();
-        store_idtoken_nvs();
-        BLUFI_INFO("Store WiFi setting to NVS");
-        store_wifi_nvs();
-        // TBD
-        set_led_cmd(LED_ALL_OFF);
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
-        BLUFI_INFO("Reboot ...");
-        esp_restart();
-    }
-
-    app_httpc_main();
-}
-
-void led_cmd_task(void *pvParameter) {
-
-    unsigned int ledCMDget = 0;
-    unsigned int ledCMDrun = 0;
-    int repeat_count = 0;
-    int cmdUPDATE = 0;
-    BaseType_t xStatus;
-
-    if (qledCMD == NULL) {
-        BLUFI_INFO("Queue is not ready");
-        return;
-    }
-    while (1) // while-loop start
-    {
-
-        // xQueueReceive(qledCMD,&ledCMDload,(TickType_t
-        // )(40/portTICK_PERIOD_MS));
-        xStatus = xQueueReceive(qledCMD, &ledCMDget, 0);
-        if (xStatus == pdPASS) {
-            BLUFI_INFO("LED CMD: receive %d", ledCMDget);
-            cmdUPDATE = 1;
-            ledCMDrun = ledCMDget;
-            repeat_count = 0;
-        } else {
-            cmdUPDATE = 0;
-        }
-        switch (ledCMDrun) {
-        case LED_ALL_OFF:
-            if (cmdUPDATE) {
-                // LED ALL OFF
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03,
-                                     0x0); // set brightness 20mA (R)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x04,
-                                     0x0); // set brightness 20mA (B)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x05,
-                                     0x0); // set brightness 20mA (G)
-            }
-            break;
-        case LED_WHITE_CNT:
-            if (cmdUPDATE) {
-                // LED White
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03,
-                                     0xC8); // set brightness 20mA (R)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x04,
-                                     0xC8); // set brightness 20mA (B)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x05,
-                                     0xC8); // set brightness 20mA (G)
-            }
-            break;
-        case LED_RED_CNT:
-            if (cmdUPDATE) {
-                // LED Green
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03,
-                                     0xC8); // set brightness 20mA (R)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x04,
-                                     0x0); // set brightness 20mA (B)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x05,
-                                     0x0); // set brightness 20mA (G)
-            }
-            break;
-        case LED_BLUE_CNT:
-            if (cmdUPDATE) {
-                // LED Green
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03,
-                                     0x0); // set brightness 20mA (R)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x04,
-                                     0xC8); // set brightness 20mA (B)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x05,
-                                     0x0); // set brightness 20mA (G)
-            }
-            break;
-        case LED_GREEN_CNT:
-            if (cmdUPDATE) {
-                // LED Green
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03,
-                                     0x0); // set brightness 20mA (R)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x04,
-                                     0x0); // set brightness 20mA (B)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x05,
-                                     0xC8); // set brightness 20mA (G)
-            }
-            break;
-        case LED_BLUE_2HZ:
-            // ON cycle
-            if (repeat_count % 10 == 0) {
-                repeat_count = 0;
-                // LED Blue ON
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03,
-                                     0x0); // set brightness 20mA (R)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x04,
-                                     0xC8); // set brightness 20mA (B)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x05,
-                                     0x0); // set brightness 20mA (G)
-            }
-            // OFF cycle
-            else if (repeat_count % 5 == 0) {
-                // LED Blue OFF
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03,
-                                     0x0); // set brightness 20mA (R)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x04,
-                                     0x0); // set brightness 20mA (B)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x05,
-                                     0x0); // set brightness 20mA (G)
-            }
-            repeat_count++;
-            break;
-        default:
-            // Nothing...
-            break;
-        }
-
-        vTaskDelay(50 / portTICK_PERIOD_MS); // run every 0..05sec
-
-    } // while-loop end
-}
-
-void set_led_cmd(unsigned int ledCMDload) {
-    xQueueSend(qledCMD, (void *)&ledCMDload, (TickType_t)0);
+static void set_led_cmd(unsigned int led_cmd_load) {
+    xQueueSend(led_cmd_que, (void *)&led_cmd_load, (TickType_t)0);
 }
 
 esp_err_t initial_nvs() {
@@ -1772,4 +1580,60 @@ void capture_photo_only() {
     esp_camera_fb_return(fb);
 
     return;
+}
+
+void app_wifi_main() {
+    // Creat message queue and LED task
+    BLUFI_INFO("Start WiFi");
+
+    // Read WiFi setting from NVS
+    // IF YES, connect to WiFi
+    // IF NO , run BlueFi
+    initial_nvs();
+    // set_led_cmd(LED_ALL_OFF);
+    if (wifi_check_nvs() == 1) {
+        BLUFI_INFO("Load lid token from NVS");
+        read_idtoken_nvs();
+        BLUFI_INFO("Load WiFi Setting from NVS");
+        load_wifi_nvs();
+        initialise_nvs_wifi();
+        xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, false, true,
+                            10000 / portTICK_PERIOD_MS);
+        if (CONNECTED_BIT != true) {
+            BLUFI_INFO("Can't Connected to AP");
+            BLUFI_INFO("Clear NVS setting");
+            clear_wifi_nvs();
+            set_led_cmd(LED_RED_CNT);
+            while (1) {
+                vTaskDelay(10000 / portTICK_PERIOD_MS);
+            }
+        }
+        set_led_cmd(LED_GREEN_CNT);
+        BLUFI_INFO("Connected to AP");
+        check_time_sntp();
+        BLUFI_INFO("Update time from SNTP");
+        vTaskDelay(30000 / portTICK_PERIOD_MS);
+        BLUFI_INFO("Clear NVS setting");
+        clear_wifi_nvs();
+    } else {
+        BLUFI_INFO("No WiFi Setting in NVS, run BlueFi");
+        set_led_cmd(LED_BLUE_2HZ);
+        blufi_run();
+        xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, false, true,
+                            portMAX_DELAY);
+        BLUFI_INFO("Connected to AP");
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+        BLUFI_INFO("Enable lid and token");
+        http_get_enable();
+        store_idtoken_nvs();
+        BLUFI_INFO("Store WiFi setting to NVS");
+        store_wifi_nvs();
+        // TBD
+        set_led_cmd(LED_ALL_OFF);
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
+        BLUFI_INFO("Reboot ...");
+        esp_restart();
+    }
+
+    app_httpc_main();
 }
