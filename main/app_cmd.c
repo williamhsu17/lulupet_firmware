@@ -47,6 +47,16 @@ struct {
     struct arg_end *end;
 } cmd_led_set_args;
 
+struct {
+    struct arg_str *list;
+    struct arg_end *end;
+} cmd_weight_get_param_args;
+
+struct {
+    struct arg_int *repeat;
+    struct arg_end *end;
+} cmd_weight_get_val_args;
+
 extern weight_task_cb w_task_cb;
 
 static int cmd_led_set(int argc, char **argv);
@@ -180,11 +190,6 @@ cmd_weight_condition_set_err:
 }
 #endif
 
-struct {
-    struct arg_str *list;
-    struct arg_end *end;
-} cmd_weight_get_param_args;
-
 static int cmd_weight_get_param(int argc, char **argv) {
     PARSE_ARG(cmd_weight_get_param_args);
 
@@ -204,6 +209,41 @@ static int cmd_weight_get_param(int argc, char **argv) {
     return 0;
 }
 
+    PARSE_ARG(cmd_weight_get_val_args);
+static int cmd_weight_get_val(int argc, char **argv) { 
+
+    if (cmd_weight_get_val_args.repeat == 0 ) {
+        printf("param err");
+        goto cmd_weight_get_val_err;
+    }
+
+    if (cmd_weight_get_val_args.repeat->ival[0] < 1 || 
+        cmd_weight_get_val_args.repeat->ival[0] > 255 ) {
+        printf("repeat <1...255>\n");
+        goto cmd_weight_get_val_err;
+    }
+
+    float adc;
+    float mg;
+
+    esp_err_t err = board_get_weight((uint8_t)cmd_weight_get_val_args.repeat->ival[0], &adc, &mg);
+
+    if (err == ESP_OK) {
+        printf("adc: %.3f\n", adc);
+        printf("weight: %.3f mg\n", mg);
+    } else {
+        printf("adc: %.3f\n", adc);
+        printf("weight: %.3f mg\n", mg);
+        printf("err: %s\n", esp_err_to_name(err));
+    }
+
+    return 0;
+
+cmd_weight_get_val_err:
+    arg_print_errors(stderr, cmd_weight_get_val_args.end, argv[0]);
+    return -1;
+}
+
 static esp_err_t register_manufacture_command(void) {
     cmd_led_set_args.led_type =
         arg_str1("t", "led_type", "<w|r|g|b|IR|W>", "led type");
@@ -221,6 +261,9 @@ static esp_err_t register_manufacture_command(void) {
     cmd_weight_get_param_args.list =
         arg_str1("l", "weight_get_param", "<1>", "weight list parameters");
     cmd_weight_get_param_args.end = arg_end(1);
+
+    cmd_weight_get_val_args.repeat = arg_int0("r", "repeat", "<1...255>", "adc repeat time");
+    cmd_weight_get_val_args.end = arg_end(1);
 
     cmd_pir_pwr_args.en = arg_int0("e", "enable", "<0|1>", "enable pir");
     cmd_pir_pwr_args.end = arg_end(1);
@@ -243,11 +286,18 @@ static esp_err_t register_manufacture_command(void) {
         },
 #endif
         {
-            .command = "weight_get",
-            .help = "weight get",
+            .command = "weight_get_param",
+            .help = "weight get task param",
             .hint = NULL,
             .func = &cmd_weight_get_param,
             .argtable = &cmd_weight_get_param_args,
+        },
+        {
+            .command = "weight_get_val",
+            .help = "weight get adc/weight value",
+            .hint = NULL,
+            .func = &cmd_weight_get_val,
+            .argtable = &cmd_weight_get_val_args,
         },
         {
             .command = "key_status",

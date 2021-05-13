@@ -487,10 +487,11 @@ esp_err_t i2c_mcp3221_readADC(i2c_port_t i2c_num, unsigned int *buffer) {
     ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
     if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(ret), __LINE__);
         return ret;
     }
 
-    vTaskDelay(30 / portTICK_RATE_MS); // TODO: chekc datasheet
+    // vTaskDelay(30 / portTICK_RATE_MS); // TODO: chekc datasheet
 
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
@@ -501,6 +502,7 @@ esp_err_t i2c_mcp3221_readADC(i2c_port_t i2c_num, unsigned int *buffer) {
     ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
     if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(ret), __LINE__);
         return ret;
     }
     (*buffer) = (unsigned int)((((unsigned int)value_hi) << 8) | (value_lo));
