@@ -33,6 +33,14 @@ esp_err_t i2c_MCP23016_writeREG(i2c_port_t i2c_num, uint8_t offset_address,
 esp_err_t i2c_MCP23016_readREG(i2c_port_t i2c_num, uint8_t offset_address,
                                uint8_t *buffer);
 
+/**
+ * @brief Get RESET_KEY (IOE P1.3) status
+ *
+ * @retval false if release
+ * @retval true if press
+ */
+bool board_get_key_status(void);
+
 esp_err_t board_led_ctrl(led_type_e led, bool enable);
 esp_err_t board_init(void);
 

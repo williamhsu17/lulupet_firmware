@@ -48,17 +48,7 @@ static int cmd_key_status(int argc, char **argv);
 static esp_err_t register_key_command(void);
 
 static int cmd_key_status(int argc, char **argv) {
-
-    uint8_t port_val;
-
-    i2c_MCP23016_readREG(I2C_MASTER_NUM, MCP23016_GPIO1_ADDR, &port_val);
-
-    ESP_LOGD(TAG, "port_val: 0x%X\n", port_val);
-    printf("key: %s\n",
-           ((BIT_CHECK(port_val, MCP23016_BUTTON_BIT)) >> MCP23016_BUTTON_BIT)
-               ? "release"
-               : "press");
-
+    printf("key: %s\n", board_get_key_status() ? "press" : "release");
     return 0;
 }
 

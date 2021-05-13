@@ -509,6 +509,21 @@ esp_err_t i2c_mcp3221_readADC(i2c_port_t i2c_num, unsigned int *buffer) {
     return ret;
 }
 
+bool board_get_key_status(void) {
+    uint8_t port_val;
+
+    i2c_MCP23016_readREG(I2C_MASTER_NUM, MCP23016_GPIO1_ADDR, &port_val);
+
+    ESP_LOGD(TAG, "port_val: 0x%X\n", port_val);
+
+    if (((BIT_CHECK(port_val, MCP23016_RESET_KEY_BIT)) >>
+         MCP23016_RESET_KEY_BIT)) {
+        return false;
+    } else {
+        return true;
+    }
+}
+
 esp_err_t board_led_ctrl(led_type_e led, bool enable) {
     ESP_LOGD(TAG, "led: %d, enable: %d", led, enable);
 
