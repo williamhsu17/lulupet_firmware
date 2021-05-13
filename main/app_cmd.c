@@ -44,6 +44,43 @@ static int cmd_weight_condition_set(int argc, char **argv);
 static int cmd_weight_get_param(int argc, char **argv);
 static esp_err_t register_weight_command(void);
 
+static int cmd_button_status(int argc, char **argv);
+static esp_err_t register_button_command(void);
+
+static int cmd_button_status(int argc, char **argv) {
+
+    uint8_t port_val;
+
+    i2c_MCP23016_readREG(I2C_MASTER_NUM, MCP23016_GPIO1_ADDR, &port_val);
+
+    ESP_LOGD(TAG, "port_val: 0x%X\n", port_val);
+    printf("button: %s\n",
+           ((BIT_CHECK(port_val, MCP23016_BUTTON_BIT)) >> MCP23016_BUTTON_BIT)
+               ? "release"
+               : "press");
+
+    return 0;
+}
+
+static esp_err_t register_button_command(void) {
+
+    const esp_console_cmd_t cmds[] = {
+        {
+            .command = "btn_status",
+            .help = "button status",
+            .hint = NULL,
+            .func = &cmd_button_status,
+            .argtable = NULL,
+        },
+    };
+
+    for (int i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++) {
+        ESP_ERROR_CHECK(esp_console_cmd_register(&cmds[i]));
+    }
+
+    return ESP_OK;
+}
+
 struct {
     struct arg_str *led_type;
     struct arg_int *en;
@@ -225,6 +262,7 @@ static void cmd_task(void *pvParameter) {
     ESP_ERROR_CHECK(esp_console_register_help_command());
     ESP_ERROR_CHECK(register_led_command());
     ESP_ERROR_CHECK(register_weight_command());
+    ESP_ERROR_CHECK(register_button_command());
 
     for (;;) {
         /* Main loop */

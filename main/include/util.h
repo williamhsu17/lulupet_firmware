@@ -211,6 +211,7 @@ extern "C" {
 
 #define MCP23016_IR_LED_BIT 0
 #define MCP23016_W_LED_BIT 1
+#define MCP23016_BUTTON_BIT 3
 
 // MCP3221 ADC setting
 #define MCP3221_CHIP_ADDR 0x4b // 7-bit I2C address
