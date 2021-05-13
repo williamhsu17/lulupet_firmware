@@ -47,6 +47,79 @@ static esp_err_t register_weight_command(void);
 static int cmd_key_status(int argc, char **argv);
 static esp_err_t register_key_command(void);
 
+static int cmd_pir_pwr(int argc, char **argv);
+static int cmd_pir_status(int argc, char **argv);
+static esp_err_t register_pir_command(void);
+
+struct {
+    struct arg_int *en;
+    struct arg_end *end;
+} cmd_pir_pwr_args;
+
+static int cmd_pir_pwr(int argc, char **argv) {
+    esp_err_t err = ESP_OK;
+
+    PARSE_ARG(cmd_pir_pwr_args);
+
+    if (cmd_pir_pwr_args.en->count == 0) {
+        printf("param err");
+        goto cmd_pir_pwr_err;
+    }
+
+    if (cmd_pir_pwr_args.en->ival[0] != 0 &&
+        cmd_pir_pwr_args.en->ival[0] != 1) {
+        printf("en <0|1>\n");
+        goto cmd_pir_pwr_err;
+    }
+
+    err = board_set_pir_pwr((bool)cmd_pir_pwr_args.en->ival[0]);
+
+    if (err == ESP_OK)
+        printf("ok\n");
+    else
+        printf("err: %s\n", esp_err_to_name(err));
+
+    return 0;
+
+cmd_pir_pwr_err:
+    arg_print_errors(stderr, cmd_pir_pwr_args.end, argv[0]);
+    return -1;
+}
+
+static int cmd_pir_status(int argc, char **argv) {
+    printf("pir: %s\n", board_get_pir_status() ? "trigger" : "non-trigger");
+    return 0;
+}
+
+static esp_err_t register_pir_command(void) {
+
+    cmd_pir_pwr_args.en = arg_int0("e", "enable", "<0|1>", "enable pir");
+    cmd_pir_pwr_args.end = arg_end(1);
+
+    const esp_console_cmd_t cmds[] = {
+        {
+            .command = "pir_status",
+            .help = "pir status",
+            .hint = NULL,
+            .func = &cmd_pir_status,
+            .argtable = NULL,
+        },
+        {
+            .command = "pir_pwr",
+            .help = "pir set power",
+            .hint = NULL,
+            .func = &cmd_pir_pwr,
+            .argtable = &cmd_pir_pwr_args,
+        },
+    };
+
+    for (int i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++) {
+        ESP_ERROR_CHECK(esp_console_cmd_register(&cmds[i]));
+    }
+
+    return ESP_OK;
+}
+
 static int cmd_key_status(int argc, char **argv) {
     printf("key: %s\n", board_get_key_status() ? "press" : "release");
     return 0;
@@ -253,6 +326,7 @@ static void cmd_task(void *pvParameter) {
     ESP_ERROR_CHECK(register_led_command());
     ESP_ERROR_CHECK(register_weight_command());
     ESP_ERROR_CHECK(register_key_command());
+    ESP_ERROR_CHECK(register_pir_command());
 
     for (;;) {
         /* Main loop */

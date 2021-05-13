@@ -509,6 +509,13 @@ esp_err_t i2c_mcp3221_readADC(i2c_port_t i2c_num, unsigned int *buffer) {
     return ret;
 }
 
+esp_err_t board_set_pir_pwr(bool enable) {
+    esp_err_t err = gpio_set_level(GPIO_OUTPUT_PIRPWR, enable);
+    return err;
+}
+
+bool board_get_pir_status(void) { return (bool)gpio_get_level(GPIO_INPUT_PIR); }
+
 bool board_get_key_status(void) {
     uint8_t port_val;
 
