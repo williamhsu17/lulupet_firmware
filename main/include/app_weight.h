@@ -81,6 +81,16 @@ typedef struct {
 
 void app_weight_main(void);
 
+/**
+ * @brief Get calculated weight. weight = adc * weight_coefficeint. unit: mg.
+ *
+ * @param adc[in] adc value.
+ * @param weight_coefficeint[in] coefficeint.
+ *
+ * @retval weight
+ */
+float weight_calculate(float adc, float weight_coefficeint);
+
 #ifdef __cplusplus
 }
 #endif

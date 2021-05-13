@@ -5,6 +5,7 @@
 
 #include "freertos/FreeRTOS.h"
 
+#include "include/app_weight.h"
 #include "include/board_driver.h"
 #include "include/util.h"
 
@@ -507,6 +508,27 @@ esp_err_t i2c_mcp3221_readADC(i2c_port_t i2c_num, unsigned int *buffer) {
     ESP_LOGD(TAG, "I2C ADC Read:%x %x %d", value_hi, value_lo, (*buffer));
 
     return ret;
+}
+
+esp_err_t board_get_weight(uint8_t repeat, float *adc, float *mg) {
+    unsigned int adc_tmp;
+    unsigned int adc_sum = 0;
+    esp_err_t err = ESP_OK;
+
+    for (uint8_t i = 0; i < repeat; ++i) {
+        err |= i2c_mcp3221_readADC(I2C_MASTER_NUM, &adc_tmp);
+        adc_sum += adc_tmp;
+    };
+
+    if (repeat == 0) {
+        *adc = 0.0;
+    } else {
+        *adc = (1.0 * adc_sum) / (1.0 * repeat);
+    }
+
+    *mg = weight_calculate(*adc, WEIGHT_COEFFICIENT);
+
+    return err;
 }
 
 esp_err_t board_set_pir_pwr(bool enable) {

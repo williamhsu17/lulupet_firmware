@@ -34,6 +34,18 @@ esp_err_t i2c_MCP23016_readREG(i2c_port_t i2c_num, uint8_t offset_address,
                                uint8_t *buffer);
 
 /**
+ * @brief Get ADC value and calcuate into real weight
+ *
+ * @param repeat[in] grab adc repeat times
+ * @param adc[out] adc value
+ * @param mg[out] calculated weight. unit: mg
+ *
+ * @retval ESP_OK: get successful
+ * @retval other: failed
+ */
+esp_err_t board_get_weight(uint8_t repeat, float *adc, float *mg);
+
+/**
  * @brief Set pir power (IO33) status
  *
  * @retval ESP_OK: set successful

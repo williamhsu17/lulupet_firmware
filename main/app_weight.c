@@ -26,9 +26,6 @@ static char *weight_fsm_name[] = {"start", "standby", "jump", "bigjump",
 weight_task_cb w_task_cb;
 
 // static function prototype
-#if (!FUNC_WEIGHT_FAKE)
-static float weight_calculate(float adc);
-#endif
 static void weight_get(void);
 static void weight_fsm_check_start(void);
 static void weight_fsm_check_standby(void);
@@ -39,13 +36,6 @@ static void weight_fsm_check_bigjump(void);
 static void weight_fsm_goto_bigjump(void);
 static void weight_fsm_check_postevent(void);
 static void weight_fsm_goto_postevent(void);
-
-#if (!FUNC_WEIGHT_FAKE)
-static float weight_calculate(float adc) {
-    // TODO: use calibration data to calculate
-    return adc * w_task_cb.weight_coefficent;
-}
-#endif
 
 static void weight_get(void) {
     if (w_task_cb.weight_pause_times) {
@@ -59,7 +49,8 @@ static void weight_get(void) {
     if (i2c_mcp3221_readADC(I2C_MASTER_NUM, &tmp_adc) == ESP_OK) {
         // get latest adc
         w_task_cb.latest_adc = 1.0 * tmp_adc;
-        w_task_cb.now_weight = weight_calculate(w_task_cb.latest_adc);
+        w_task_cb.now_weight =
+            weight_calculate(w_task_cb.latest_adc, w_task_cb.weight_coefficent);
 
         // get reference adc
         if (w_task_cb.ref_adc_exec) {
@@ -88,7 +79,8 @@ static void weight_get(void) {
                 w_task_cb.ring_buffer_idx = 0;
                 w_task_cb.ring_buffer_loop = true;
             }
-            w_task_cb.ref_weight = weight_calculate(w_task_cb.ref_adc);
+            w_task_cb.ref_weight = weight_calculate(
+                w_task_cb.ref_adc, w_task_cb.weight_coefficent);
         }
 
         ESP_LOGD(TAG, "now adc [%.2f] ref [%.2f]", w_task_cb.latest_adc,
@@ -285,6 +277,11 @@ static void weight_task(void *pvParameter) {
 
         vTaskDelay(w_task_cb.period_ms / portTICK_PERIOD_MS);
     }
+}
+
+float weight_calculate(float adc, float weight_coefficeint) {
+    // TODO: use calibration data to calculate
+    return adc * weight_coefficeint;
 }
 
 void app_weight_main(void) {
