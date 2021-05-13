@@ -1,61 +1,64 @@
 /* ESPRESSIF MIT License
- *
+ * 
  * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in
- * which case, it is free of charge, to any person obtaining a copy of this
- * software and associated documentation files (the "Software"), to deal in the
- * Software without restriction, including without limitation the rights to use,
- * copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
- * the Software, and to permit persons to whom the Software is furnished to do
- * so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
+ * 
+ * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
+ * it is free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
+ * to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ * 
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-#include "app_camera.h"
-#include "driver/gpio.h"
-#include "esp_camera.h"
 #include "esp_log.h"
+#include "esp_camera.h"
+#include "app_camera.h"
 #include "sdkconfig.h"
+#include "driver/gpio.h"
 
 #define CAMERA_FRAME_SIZE FRAMESIZE_XGA
 
 // GPIO setting
-#define GPIO_OUTPUT_CAMPWR 12
-#define GPIO_OUTPUT_CAMPWR_PIN_SEL (1ULL << GPIO_OUTPUT_CAMPWR)
+#define GPIO_OUTPUT_CAMPWR  12
+#define GPIO_OUTPUT_CAMPWR_PIN_SEL  (1ULL<<GPIO_OUTPUT_CAMPWR)
 
 static const char *TAG = "app_camera";
 
-void init_cam_gpio() {
-    gpio_config_t io_conf;
 
+void init_cam_gpio()
+{
+	gpio_config_t io_conf;
+	
     io_conf.intr_type = GPIO_INTR_DISABLE;
-    // set as output mode
+    //set as output mode
     io_conf.mode = GPIO_MODE_OUTPUT;
-    // bit mask of the pins
-    io_conf.pin_bit_mask = GPIO_OUTPUT_CAMPWR_PIN_SEL;
-    // disable pull-down mode
+    //bit mask of the pins 
+    io_conf.pin_bit_mask = GPIO_OUTPUT_CAMPWR_PIN_SEL ;
+    //disable pull-down mode
     io_conf.pull_down_en = 0;
-    // disable pull-up mode
+    //disable pull-up mode
     io_conf.pull_up_en = 1;
-    // configure GPIO with the given settings
+    //configure GPIO with the given settings
     gpio_config(&io_conf);
-
-    gpio_set_level(GPIO_OUTPUT_CAMPWR, 1);
+	
+	gpio_set_level(GPIO_OUTPUT_CAMPWR , 1);
+	
 }
 
-void app_camera_main() {
-    init_cam_gpio();
 
+void app_camera_main ()
+{
+	init_cam_gpio();
+	
 #if CONFIG_CAMERA_MODEL_ESP_EYE
     /* IO13, IO14 is designed for JTAG by default,
      * to use it as generalized input,
@@ -90,12 +93,12 @@ void app_camera_main() {
     config.pin_sscb_scl = SIOC_GPIO_NUM;
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
-    // reduce camera interface spped for stability
-    // config.xclk_freq_hz = 20000000;
-    // config.xclk_freq_hz = 10000000;
-    config.xclk_freq_hz = 5000000;
+	//reduce camera interface spped for stability
+    //config.xclk_freq_hz = 20000000;
+	//config.xclk_freq_hz = 10000000;
+	config.xclk_freq_hz = 5000000;
     config.pixel_format = PIXFORMAT_JPEG;
-    // init with high specs to pre-allocate larger buffers
+    //init with high specs to pre-allocate larger buffers
     config.frame_size = FRAMESIZE_UXGA;
     config.jpeg_quality = 12;
     config.fb_count = 2;
@@ -107,13 +110,13 @@ void app_camera_main() {
         return;
     }
 
-    sensor_t *s = esp_camera_sensor_get();
-    // initial sensors are flipped vertically and colors are a bit saturated
+    sensor_t * s = esp_camera_sensor_get();
+    //initial sensors are flipped vertically and colors are a bit saturated
     if (s->id.PID == OV3660_PID) {
-        s->set_vflip(s, 1);       // flip it back
-        s->set_brightness(s, 1);  // up the blightness just a bit
-        s->set_saturation(s, -2); // lower the saturation
+        s->set_vflip(s, 1);//flip it back
+        s->set_brightness(s, 1);//up the blightness just a bit
+        s->set_saturation(s, -2);//lower the saturation
     }
-    // drop down frame size for higher initial frame rate
+    //drop down frame size for higher initial frame rate
     s->set_framesize(s, CAMERA_FRAME_SIZE);
 }

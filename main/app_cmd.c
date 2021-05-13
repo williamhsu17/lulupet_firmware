@@ -208,9 +208,9 @@ static int cmd_weight_get_param(int argc, char **argv) {
 
     return 0;
 }
+static int cmd_weight_get_val(int argc, char **argv) { 
 
     PARSE_ARG(cmd_weight_get_val_args);
-static int cmd_weight_get_val(int argc, char **argv) { 
 
     if (cmd_weight_get_val_args.repeat == 0 ) {
         printf("param err");
