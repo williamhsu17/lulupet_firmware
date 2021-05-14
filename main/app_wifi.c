@@ -97,6 +97,9 @@
 #define EXAMPLE_WIFI_SSID "SlingXCorp"
 #define EXAMPLE_WIFI_PASS "25413113"
 #define WIFI_TEST_MODE 0
+#define BLUFI_CHK_CONN_MS 10000 // TODO: can be set by command/config file
+#define WIFI_CONN_CHK_MS 10000 // TODO: can be set by command/config file
+#define WIFI_CONN_RETRY 4
 
 static uint8_t example_service_uuid128[32] = {
     /* LSB
@@ -125,7 +128,7 @@ static esp_ble_adv_data_t example_adv_data = {
     .p_service_uuid = example_service_uuid128,
     .flag = 0x6,
 };
-static esp_ble_adv_params_t example_adv_params = {
+static esp_ble_adv_params_t ble_adv_params = {
     .adv_int_min = 0x100,
     .adv_int_max = 0x100,
     .adv_type = ADV_TYPE_IND,
@@ -145,7 +148,7 @@ static EventGroupHandle_t wifi_event_group;
 /* The event group allows multiple bits for each event,
    but we only care about one event - are we connected
    to the AP with an IP? */
-const int CONNECTED_BIT = BIT0;
+const int WIFI_CONNECTED_BIT = BIT0;
 /* store the station info for send back to phone */
 static bool gl_sta_connected = false;
 static uint8_t gl_sta_bssid[6];
@@ -164,9 +167,12 @@ extern const char howsmyssl_com_root_cert_pem_end[] asm(
     "_binary_lulupet_com_root_cert_pem_end");
 
 static esp_err_t esp_err_print(esp_err_t err, const char *func, uint32_t line);
-static void example_event_callback(esp_blufi_cb_event_t event,
+static void blufi_event_callback(esp_blufi_cb_event_t event,
                                    esp_blufi_cb_param_t *param);
-static void initialise_nvs_wifi(void);
+static void wifi_init(void);
+static void wifi_init_from_nvs(void);
+static void wifi_check_connect(uint32_t wait_ms, uint8_t retry);
+static bool wifi_event_check_conn(uint32_t wait_ms);
 static void set_led_cmd(unsigned int led_cmd_load);
 static void obtain_time(void);
 static void initialize_sntp(void);
@@ -176,7 +182,7 @@ static void http_post_task(void *pvParameter);
 static void http_get_enable(void);
 static void http_post_data(void);
 
-static esp_err_t nvs_initialize(void);
+static esp_err_t nvs_init(void);
 static int32_t nvs_read_wifichecked(void);
 static esp_err_t nvs_write_wifi_val(int32_t set_value,
                                     wifi_config_t *wifi_config);
@@ -185,6 +191,9 @@ static esp_err_t nvs_reset_wifi_val(void);
 static esp_err_t nvs_read_lid_token(void);
 static esp_err_t nvs_read_wifi_config(void);
 static esp_err_t nvs_write_lid_token(void);
+
+static void blufi_init(void);
+static void blufi_check_connect(void);
 
 static esp_err_t event_handler(void *ctx, system_event_t *event);
 
@@ -231,7 +240,7 @@ static void capture_photo_only(void) {
 
 static void http_post_rawdata(void) {
     
-    // xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, false, true,
+    // xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true,
     // portMAX_DELAY);
 
     esp_err_t err;
@@ -239,7 +248,7 @@ static void http_post_rawdata(void) {
     esp_http_client_config_t config = {
         .host = SERVER_URL,
         .path = "/rawdata",
-        .event_handler = _http_event_handler,
+        .event_handler = http_event_handler,
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
 
@@ -380,7 +389,7 @@ static void http_post_photo(void) {
     // HTTP process
     esp_http_client_config_t config = {
         .url = HTTP_PHOTO_URL,
-        .event_handler = _http_event_handler,
+        .event_handler = http_event_handler,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -542,7 +551,7 @@ static void set_led_cmd(unsigned int led_cmd_load) {
     xQueueSend(led_cmd_que, (void *)&led_cmd_load, (TickType_t)0);
 }
 
-static esp_err_t nvs_initialize(void) {
+static esp_err_t nvs_init(void) {
     // Initialize NVS
     esp_err_t err;
     err = nvs_flash_init();
@@ -680,7 +689,7 @@ static int32_t nvs_read_wifichecked(void) {
     err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
     if (err != ESP_OK) {
         esp_err_print(err, __FUNCTION__, __LINE__);
-        nvs_initialize();
+        nvs_init();
         nvs_reset_wifi_val();
         return wifichecked_value;
     }
@@ -704,16 +713,13 @@ static int32_t nvs_read_wifichecked(void) {
     return wifichecked_value;
 }
 
-static void initialise_nvs_wifi(void) {
+static void wifi_init_from_nvs(void) {
     tcpip_adapter_init();
-    wifi_event_group = xEventGroupCreate();
     ESP_ERROR_CHECK(esp_event_loop_init(event_handler, NULL));
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
     wifi_config_t wifi_config = {};
-    // wifi_config.sta.ssid = sta_config.sta.ssid;
-    // wifi_config.sta.password = sta_config.sta.password;
     strcpy((char *)wifi_config.sta.ssid, (char *)sta_config.sta.ssid);
     strcpy((char *)wifi_config.sta.password, (char *)sta_config.sta.password);
     BLUFI_INFO("Setting WiFi configuration SSID %s...", wifi_config.sta.ssid);
@@ -722,19 +728,54 @@ static void initialise_nvs_wifi(void) {
     ESP_ERROR_CHECK(esp_wifi_start());
 }
 
+static void wifi_check_connect(uint32_t wait_ms, uint8_t retry) {
+
+    if ( retry == 0 ) {
+        retry = 1;
+    }
+
+    for (uint8_t i = 0; i < retry; ++i) {
+        ESP_LOGI(TAG, "try to connect to WiFi %d time", i+1);
+        if ( wifi_event_check_conn(wait_ms) == true ) {
+            return;
+            
+        } 
+        ESP_LOGI(TAG, "can't connecte to AP[SSID/PWD:%s/%s]", sta_config.sta.ssid, sta_config.sta.password);
+    }
+
+    while(1) {
+        set_led_cmd(LED_RED_1HZ);
+        // TODO: Wait key event
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+}
+
+static bool wifi_event_check_conn(uint32_t wait_ms) {
+    EventBits_t wifi_event_bits;
+
+    wifi_event_bits = xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true,
+                        wait_ms / portTICK_PERIOD_MS);
+    ESP_LOGI(TAG, "wifi_event_bits: 0x%x", wifi_event_bits);
+    if ( (wifi_event_bits & WIFI_CONNECTED_BIT) ) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 static esp_err_t event_handler(void *ctx, system_event_t *event) {
     switch (event->event_id) {
     case SYSTEM_EVENT_STA_START:
         esp_wifi_connect();
         break;
     case SYSTEM_EVENT_STA_GOT_IP:
-        xEventGroupSetBits(wifi_event_group, CONNECTED_BIT);
+        xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
         break;
     case SYSTEM_EVENT_STA_DISCONNECTED:
         /* This is a workaround as ESP32 WiFi libs don't currently
            auto-reassociate. */
         esp_wifi_connect();
-        xEventGroupClearBits(wifi_event_group, CONNECTED_BIT);
+        xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
         break;
     default:
         break;
@@ -742,8 +783,8 @@ static esp_err_t event_handler(void *ctx, system_event_t *event) {
     return ESP_OK;
 }
 
-/* connect infor*/
-static esp_err_t example_net_event_handler(void *ctx, system_event_t *event) {
+/* connect information */
+static esp_err_t wifi_event_handler(void *ctx, system_event_t *event) {
     wifi_mode_t mode;
 
     switch (event->event_id) {
@@ -753,7 +794,7 @@ static esp_err_t example_net_event_handler(void *ctx, system_event_t *event) {
     case SYSTEM_EVENT_STA_GOT_IP: {
         esp_blufi_extra_info_t info;
 
-        xEventGroupSetBits(wifi_event_group, CONNECTED_BIT);
+        xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
         esp_wifi_get_mode(&mode);
 
         memset(&info, 0, sizeof(esp_blufi_extra_info_t));
@@ -780,7 +821,7 @@ static esp_err_t example_net_event_handler(void *ctx, system_event_t *event) {
         memset(gl_sta_bssid, 0, 6);
         gl_sta_ssid_len = 0;
         esp_wifi_connect();
-        xEventGroupClearBits(wifi_event_group, CONNECTED_BIT);
+        xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
         break;
     case SYSTEM_EVENT_AP_START:
         esp_wifi_get_mode(&mode);
@@ -835,10 +876,9 @@ static esp_err_t example_net_event_handler(void *ctx, system_event_t *event) {
     return ESP_OK;
 }
 
-static void initialise_wifi(void) {
+static void wifi_init(void) {
     tcpip_adapter_init();
-    wifi_event_group = xEventGroupCreate();
-    ESP_ERROR_CHECK(esp_event_loop_init(example_net_event_handler, NULL));
+    ESP_ERROR_CHECK(esp_event_loop_init(wifi_event_handler, NULL));
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
@@ -846,46 +886,45 @@ static void initialise_wifi(void) {
     ESP_ERROR_CHECK(esp_wifi_start());
 }
 
-static esp_blufi_callbacks_t example_callbacks = {
-    .event_cb = example_event_callback,
+static esp_blufi_callbacks_t blufi_callbacks = {
+    .event_cb = blufi_event_callback,
     .negotiate_data_handler = blufi_dh_negotiate_data_handler,
     .encrypt_func = blufi_aes_encrypt,
     .decrypt_func = blufi_aes_decrypt,
     .checksum_func = blufi_crc_checksum,
 };
 
-static void example_event_callback(esp_blufi_cb_event_t event,
+static void blufi_event_callback(esp_blufi_cb_event_t event,
                                    esp_blufi_cb_param_t *param) {
     /* actually, should post to blufi_task handle the procedure,
      * now, as a example, we do it more simply */
     switch (event) {
     case ESP_BLUFI_EVENT_INIT_FINISH:
-        BLUFI_INFO("BLUFI init finish\n");
-
+        BLUFI_INFO("BLUFI init finish");
         esp_ble_gap_set_device_name(BLUFI_DEVICE_NAME);
         esp_ble_gap_config_adv_data(&example_adv_data);
         break;
     case ESP_BLUFI_EVENT_DEINIT_FINISH:
-        BLUFI_INFO("BLUFI deinit finish\n");
+        BLUFI_INFO("BLUFI deinit finish");
         break;
     case ESP_BLUFI_EVENT_BLE_CONNECT:
-        BLUFI_INFO("BLUFI ble connect\n");
+        BLUFI_INFO("BLUFI ble connect");
         server_if = param->connect.server_if;
         conn_id = param->connect.conn_id;
         esp_ble_gap_stop_advertising();
         blufi_security_init();
         break;
     case ESP_BLUFI_EVENT_BLE_DISCONNECT:
-        BLUFI_INFO("BLUFI ble disconnect\n");
+        BLUFI_INFO("BLUFI ble disconnect");
         blufi_security_deinit();
-        esp_ble_gap_start_advertising(&example_adv_params);
+        esp_ble_gap_start_advertising(&ble_adv_params);
         break;
     case ESP_BLUFI_EVENT_SET_WIFI_OPMODE:
-        BLUFI_INFO("BLUFI Set WIFI opmode %d\n", param->wifi_mode.op_mode);
+        BLUFI_INFO("BLUFI Set WIFI opmode %d", param->wifi_mode.op_mode);
         ESP_ERROR_CHECK(esp_wifi_set_mode(param->wifi_mode.op_mode));
         break;
     case ESP_BLUFI_EVENT_REQ_CONNECT_TO_AP:
-        BLUFI_INFO("BLUFI requset wifi connect to AP\n");
+        BLUFI_INFO("BLUFI requset wifi connect to AP");
         /* there is no wifi callback when the device has already connected to
         this wifi so disconnect wifi before connection.
         */
@@ -893,11 +932,11 @@ static void example_event_callback(esp_blufi_cb_event_t event,
         esp_wifi_connect();
         break;
     case ESP_BLUFI_EVENT_REQ_DISCONNECT_FROM_AP:
-        BLUFI_INFO("BLUFI requset wifi disconnect from AP\n");
+        BLUFI_INFO("BLUFI requset wifi disconnect from AP");
         esp_wifi_disconnect();
         break;
     case ESP_BLUFI_EVENT_REPORT_ERROR:
-        BLUFI_ERROR("BLUFI report error, error code %d\n",
+        BLUFI_ERROR("BLUFI report error, error code %d",
                     param->report_error.state);
         esp_blufi_send_error_info(param->report_error.state);
         break;
@@ -919,7 +958,7 @@ static void example_event_callback(esp_blufi_cb_event_t event,
             esp_blufi_send_wifi_conn_report(mode, ESP_BLUFI_STA_CONN_FAIL, 0,
                                             NULL);
         }
-        BLUFI_INFO("BLUFI get wifi status from AP\n");
+        BLUFI_INFO("BLUFI get wifi status from AP");
 
         break;
     }
@@ -934,21 +973,21 @@ static void example_event_callback(esp_blufi_cb_event_t event,
         memcpy(sta_config.sta.bssid, param->sta_bssid.bssid, 6);
         sta_config.sta.bssid_set = 1;
         esp_wifi_set_config(WIFI_IF_STA, &sta_config);
-        BLUFI_INFO("Recv STA BSSID %s\n", sta_config.sta.ssid);
+        BLUFI_INFO("Recv STA BSSID %s", sta_config.sta.ssid);
         break;
     case ESP_BLUFI_EVENT_RECV_STA_SSID:
         strncpy((char *)sta_config.sta.ssid, (char *)param->sta_ssid.ssid,
                 param->sta_ssid.ssid_len);
         sta_config.sta.ssid[param->sta_ssid.ssid_len] = '\0';
         esp_wifi_set_config(WIFI_IF_STA, &sta_config);
-        BLUFI_INFO("Recv STA SSID %s\n", sta_config.sta.ssid);
+        BLUFI_INFO("Recv STA SSID %s", sta_config.sta.ssid);
         break;
     case ESP_BLUFI_EVENT_RECV_STA_PASSWD:
         strncpy((char *)sta_config.sta.password,
                 (char *)param->sta_passwd.passwd, param->sta_passwd.passwd_len);
         sta_config.sta.password[param->sta_passwd.passwd_len] = '\0';
         esp_wifi_set_config(WIFI_IF_STA, &sta_config);
-        BLUFI_INFO("Recv STA PASSWORD %s\n", sta_config.sta.password);
+        BLUFI_INFO("Recv STA PASSWORD %s", sta_config.sta.password);
         break;
     case ESP_BLUFI_EVENT_RECV_SOFTAP_SSID:
         strncpy((char *)ap_config.ap.ssid, (char *)param->softap_ssid.ssid,
@@ -956,7 +995,7 @@ static void example_event_callback(esp_blufi_cb_event_t event,
         ap_config.ap.ssid[param->softap_ssid.ssid_len] = '\0';
         ap_config.ap.ssid_len = param->softap_ssid.ssid_len;
         esp_wifi_set_config(WIFI_IF_AP, &ap_config);
-        BLUFI_INFO("Recv SOFTAP SSID %s, ssid len %d\n", ap_config.ap.ssid,
+        BLUFI_INFO("Recv SOFTAP SSID %s, ssid len %d", ap_config.ap.ssid,
                    ap_config.ap.ssid_len);
         break;
     case ESP_BLUFI_EVENT_RECV_SOFTAP_PASSWD:
@@ -965,7 +1004,7 @@ static void example_event_callback(esp_blufi_cb_event_t event,
                 param->softap_passwd.passwd_len);
         ap_config.ap.password[param->softap_passwd.passwd_len] = '\0';
         esp_wifi_set_config(WIFI_IF_AP, &ap_config);
-        BLUFI_INFO("Recv SOFTAP PASSWORD %s len = %d\n", ap_config.ap.password,
+        BLUFI_INFO("Recv SOFTAP PASSWORD %s len = %d", ap_config.ap.password,
                    param->softap_passwd.passwd_len);
         break;
     case ESP_BLUFI_EVENT_RECV_SOFTAP_MAX_CONN_NUM:
@@ -974,7 +1013,7 @@ static void example_event_callback(esp_blufi_cb_event_t event,
         }
         ap_config.ap.max_connection = param->softap_max_conn_num.max_conn_num;
         esp_wifi_set_config(WIFI_IF_AP, &ap_config);
-        BLUFI_INFO("Recv SOFTAP MAX CONN NUM %d\n",
+        BLUFI_INFO("Recv SOFTAP MAX CONN NUM %d",
                    ap_config.ap.max_connection);
         break;
     case ESP_BLUFI_EVENT_RECV_SOFTAP_AUTH_MODE:
@@ -983,7 +1022,7 @@ static void example_event_callback(esp_blufi_cb_event_t event,
         }
         ap_config.ap.authmode = param->softap_auth_mode.auth_mode;
         esp_wifi_set_config(WIFI_IF_AP, &ap_config);
-        BLUFI_INFO("Recv SOFTAP AUTH MODE %d\n", ap_config.ap.authmode);
+        BLUFI_INFO("Recv SOFTAP AUTH MODE %d", ap_config.ap.authmode);
         break;
     case ESP_BLUFI_EVENT_RECV_SOFTAP_CHANNEL:
         if (param->softap_channel.channel > 13) {
@@ -991,7 +1030,7 @@ static void example_event_callback(esp_blufi_cb_event_t event,
         }
         ap_config.ap.channel = param->softap_channel.channel;
         esp_wifi_set_config(WIFI_IF_AP, &ap_config);
-        BLUFI_INFO("Recv SOFTAP CHANNEL %d\n", ap_config.ap.channel);
+        BLUFI_INFO("Recv SOFTAP CHANNEL %d", ap_config.ap.channel);
         break;
     case ESP_BLUFI_EVENT_GET_WIFI_LIST: {
         wifi_scan_config_t scanConf = {
@@ -1000,7 +1039,7 @@ static void example_event_callback(esp_blufi_cb_event_t event,
         break;
     }
     case ESP_BLUFI_EVENT_RECV_CUSTOM_DATA:
-        BLUFI_INFO("Recv Custom Data %d\n", param->custom_data.data_len);
+        BLUFI_INFO("Recv Custom Data %d", param->custom_data.data_len);
         // esp_log_buffer_hex("Custom Data", param->custom_data.data,
         // param->custom_data.data_len);
         char *custimdataBuffer = malloc(200);
@@ -1058,67 +1097,78 @@ static void example_gap_event_handler(esp_gap_ble_cb_event_t event,
                                       esp_ble_gap_cb_param_t *param) {
     switch (event) {
     case ESP_GAP_BLE_ADV_DATA_SET_COMPLETE_EVT:
-        esp_ble_gap_start_advertising(&example_adv_params);
+        esp_ble_gap_start_advertising(&ble_adv_params);
         break;
     default:
         break;
     }
 }
 
-static void blufi_run(void) {
+static void blufi_init(void) {
     esp_err_t ret;
-
-    initialise_wifi();
 
     ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT));
 
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     ret = esp_bt_controller_init(&bt_cfg);
     if (ret) {
-        BLUFI_ERROR("%s initialize bt controller failed: %s\n", __func__,
-                    esp_err_to_name(ret));
+        BLUFI_ERROR("%s:L%d initialize bt controller failed: %s"
+        , __func__, __LINE__, esp_err_to_name(ret));
     }
 
     ret = esp_bt_controller_enable(ESP_BT_MODE_BLE);
     if (ret) {
-        BLUFI_ERROR("%s enable bt controller failed: %s\n", __func__,
-                    esp_err_to_name(ret));
+        BLUFI_ERROR("%s:L%d enable bt controller failed: %s"
+        , __func__, __LINE__, esp_err_to_name(ret));
         return;
     }
 
     ret = esp_bluedroid_init();
     if (ret) {
-        BLUFI_ERROR("%s init bluedroid failed: %s\n", __func__,
+        BLUFI_ERROR("%s:L%d init bluedroid failed: %s", __func__, __LINE__,
                     esp_err_to_name(ret));
         return;
     }
 
     ret = esp_bluedroid_enable();
     if (ret) {
-        BLUFI_ERROR("%s init bluedroid failed: %s\n", __func__,
+        BLUFI_ERROR("%s:L%d init bluedroid failed: %s", __func__, __LINE__,
                     esp_err_to_name(ret));
         return;
     }
 
-    BLUFI_INFO("BD ADDR: " ESP_BD_ADDR_STR "\n",
+    BLUFI_INFO("BD ADDR: " ESP_BD_ADDR_STR "",
                ESP_BD_ADDR_HEX(esp_bt_dev_get_address()));
 
-    BLUFI_INFO("BLUFI VERSION %04x\n", esp_blufi_get_version());
+    BLUFI_INFO("BLUFI VERSION %04x", esp_blufi_get_version());
 
     ret = esp_ble_gap_register_callback(example_gap_event_handler);
     if (ret) {
-        BLUFI_ERROR("%s gap register failed, error code = %x\n", __func__, ret);
+        BLUFI_ERROR("%s:L%d gap register failed, error code = %x", __func__, __LINE__, ret);
         return;
     }
 
-    ret = esp_blufi_register_callbacks(&example_callbacks);
+    ret = esp_blufi_register_callbacks(&blufi_callbacks);
     if (ret) {
-        BLUFI_ERROR("%s blufi register failed, error code = %x\n", __func__,
-                    ret);
+        BLUFI_ERROR("%s:L%d blufi register failed, error code = %x", __func__, __LINE__, ret);
         return;
     }
 
     esp_blufi_profile_init();
+}
+
+static void blufi_check_connect(void) {
+
+    if ( wifi_event_check_conn(WIFI_CONNECTED_BIT) )
+        return;
+
+    BLUFI_WARNING("blufi can't connect to AP, wait key press > 5 sec");
+
+    while(1) {
+        BLUFI_WARNING("wait key event");
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        // TODO: get key event
+    }
 }
 
 static void check_time_sntp(void) {
@@ -1128,7 +1178,7 @@ static void check_time_sntp(void) {
     localtime_r(&now, &timeinfo);
     // Is time set? If not, tm_year will be (1970 - 1900).
     if (timeinfo.tm_year < (2020 - 1900)) {
-        BLUFI_INFO("Time is not set yet. Connecting to WiFi and getting time "
+        ESP_LOGI(TAG, "Time is not set yet. Connecting to WiFi and getting time "
                    "over NTP.");
         obtain_time();
         // update 'now' variable with current time
@@ -1141,17 +1191,17 @@ static void check_time_sntp(void) {
     tzset();
     localtime_r(&now, &timeinfo);
     strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-    BLUFI_INFO("The current date/time in Taipei is: %s", strftime_buf);
+    ESP_LOGI(TAG, "The current date/time in Taipei is: %s", strftime_buf);
 
     time_t seconds;
     seconds = time(NULL);
-    BLUFI_INFO("Seconds since January 1, 1970 = %ld\n", seconds);
+    ESP_LOGI(TAG, "Seconds since January 1, 1970 = %ld", seconds);
 }
 
 static void obtain_time(void) {
     // ESP_ERROR_CHECK( nvs_flash_init() );
-    // initialise_wifi();
-    xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, false, true,
+    // wifi_init();
+    xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true,
                         portMAX_DELAY);
     initialize_sntp();
 
@@ -1190,7 +1240,7 @@ static void http_post_task(void *pvParameter) {
 
     while (i < 300) {
         ESP_LOGI(TAG, "Checking WiFi status");
-        xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, false, true,
+        xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true,
                             portMAX_DELAY);
         ESP_LOGI(TAG, "Start to upload photo");
         http_post_data();
@@ -1206,7 +1256,7 @@ static void http_post_task(void *pvParameter) {
     }
 }
 
-esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
+esp_err_t http_event_handler(esp_http_client_event_t *evt) {
     switch (evt->event_id) {
     case HTTP_EVENT_ERROR:
         ESP_LOGD(TAG, "HTTP_EVENT_ERROR");
@@ -1242,7 +1292,7 @@ static void http_get_enable(void) {
 
     esp_http_client_config_t config = {
         .url = HTTP_ENABLE_URL,
-        .event_handler = _http_event_handler,
+        .event_handler = http_event_handler,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -1368,7 +1418,7 @@ static void http_post_data(void) {
     // HTTP process
     esp_http_client_config_t config = {
         .url = HTTP_PHOTO_URL,
-        .event_handler = _http_event_handler,
+        .event_handler = http_event_handler,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -1567,54 +1617,46 @@ static void http_post_data(void) {
 
 void app_wifi_main(void) {
     // Creat message queue and LED task
-    BLUFI_INFO("Start WiFi");
+    ESP_LOGI(TAG, "start connect process");
+    set_led_cmd(LED_BLUE_SOLID);
 
     // Read WiFi setting from NVS
     // IF YES, connect to WiFi
     // IF NO , run BlueFi
-    nvs_initialize();
-    // set_led_cmd(LED_ALL_OFF);
+    nvs_init();
+    wifi_event_group = xEventGroupCreate();
+    xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
     if (nvs_read_wifichecked() == 1) {
-        BLUFI_INFO("Load lid token from NVS");
+        ESP_LOGI(TAG, "load lid token from nvs");
         nvs_read_lid_token();
-        BLUFI_INFO("Load WiFi Setting from NVS");
+        ESP_LOGI(TAG, "load WiFi Setting from nvs");
         nvs_read_wifi_config();
-        initialise_nvs_wifi();
-        xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, false, true,
-                            10000 / portTICK_PERIOD_MS);
-        if (CONNECTED_BIT != true) {
-            BLUFI_INFO("Can't Connected to AP");
-            BLUFI_INFO("Clear NVS setting");
-            nvs_reset_wifi_val();
-            set_led_cmd(LED_RED_SOLID);
-            while (1) {
-                vTaskDelay(10000 / portTICK_PERIOD_MS);
-            }
-        }
+        wifi_init_from_nvs();
+        wifi_check_connect(WIFI_CONN_CHK_MS, WIFI_CONN_RETRY);
         set_led_cmd(LED_GREEN_SOLID);
-        BLUFI_INFO("Connected to AP");
+        ESP_LOGI(TAG, "connected to AP");
         check_time_sntp();
-        BLUFI_INFO("Update time from SNTP");
+        ESP_LOGI(TAG, "Update time from SNTP");
         vTaskDelay(30000 / portTICK_PERIOD_MS);
-        BLUFI_INFO("Clear NVS setting");
-        nvs_reset_wifi_val();
+        //ESP_LOGI(TAG, "Clear NVS setting");
+        //nvs_reset_wifi_val();
     } else {
-        BLUFI_INFO("No WiFi Setting in NVS, run BlueFi");
-        set_led_cmd(LED_BLUE_2HZ);
-        blufi_run();
-        xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, false, true,
-                            portMAX_DELAY);
-        BLUFI_INFO("Connected to AP");
+        BLUFI_INFO("w/o WiFi configuration in NVS. run blufi");
+        set_led_cmd(LED_BLUE_1HZ);
+        wifi_init();
+        blufi_init();
+        blufi_check_connect();
+        BLUFI_INFO("connected to AP");
         vTaskDelay(500 / portTICK_PERIOD_MS);
-        BLUFI_INFO("Enable lid and token");
+        BLUFI_INFO("enable lid and token");
         http_get_enable();
         nvs_write_lid_token();
-        BLUFI_INFO("Store WiFi setting to NVS");
+        BLUFI_INFO("store WiFi setting to NVS");
         nvs_set_wifi_val();
         // TBD
         set_led_cmd(LED_ALL_OFF);
         vTaskDelay(5000 / portTICK_PERIOD_MS);
-        BLUFI_INFO("Reboot ...");
+        BLUFI_WARNING("reboot");
         esp_restart();
     }
 
