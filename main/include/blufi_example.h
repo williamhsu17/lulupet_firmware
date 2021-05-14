@@ -3,8 +3,9 @@
 #include "stdbool.h"
 #include "stdint.h"
 
-#define BLUFI_EXAMPLE_TAG "BLUFI_EXAMPLE"
+#define BLUFI_EXAMPLE_TAG "BluFi"
 #define BLUFI_INFO(fmt, ...) ESP_LOGI(BLUFI_EXAMPLE_TAG, fmt, ##__VA_ARGS__)
+#define BLUFI_WARNING(fmt, ...) ESP_LOGW(BLUFI_EXAMPLE_TAG, fmt, ##__VA_ARGS__)
 #define BLUFI_ERROR(fmt, ...) ESP_LOGE(BLUFI_EXAMPLE_TAG, fmt, ##__VA_ARGS__)
 
 void blufi_dh_negotiate_data_handler(uint8_t *data, int len,
