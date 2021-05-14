@@ -3,7 +3,7 @@
 # project subdirectory.
 #
 
-PROJECT_NAME := lulupet_poc
+PROJECT_NAME := lulupet_fw
 
 SOLUTION_PATH ?= $(abspath $(shell pwd))/../../..
 
