@@ -10,10 +10,10 @@ extern "C" {
 #include "esp_err.h"
 
 typedef enum {
-    LED_TYPE_W = 0,
-    LED_TYPE_R,
+    LED_TYPE_R = 0,
     LED_TYPE_G,
     LED_TYPE_B,
+    LED_TYPE_W,
     LED_TYPE_IR,   // ioe ir led
     LED_TYPE_BD_W, // ioe white led
     LED_TYPE_MAX,
@@ -32,6 +32,18 @@ esp_err_t i2c_MCP23016_writeREG(i2c_port_t i2c_num, uint8_t offset_address,
                                 uint8_t value);
 esp_err_t i2c_MCP23016_readREG(i2c_port_t i2c_num, uint8_t offset_address,
                                uint8_t *buffer);
+
+/**
+ * @brief Set RGB led module
+ *
+ * @param r[in] true: enable. false: diable.
+ * @param g[in] true: enable. false: diable.
+ * @param b[in] true: enable. false: diable.
+ *
+ * @retval ESP_OK: set successful
+ * @retval other: failed
+ */
+esp_err_t board_set_rgb_led(bool r, bool g, bool b);
 
 /**
  * @brief Get ADC value and calcuate into real weight

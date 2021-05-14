@@ -16,6 +16,12 @@
 #define TAG "board_drv"
 
 typedef struct {
+    uint8_t address;
+    uint8_t curr_val;
+} reg_led_cb_t;
+
+typedef struct {
+    reg_led_cb_t *rgb_led;
     bool ioe_ir_led;
     bool ioe_w_led;
 } board_cb_t;
@@ -25,7 +31,21 @@ typedef enum {
     GPIO_OUTPUT_HIGH = 1,
 } gpio_output_level_e;
 
-board_cb_t board_cb;
+static reg_led_cb_t reg_led_cb[] = {
+    {
+        .address = RGB_LED_R_ADDR,
+    },
+    {
+        .address = RGB_LED_G_ADDR,
+    },
+    {
+        .address = RGB_LED_B_ADDR,
+    },
+};
+
+static board_cb_t board_cb = {
+    .rgb_led = reg_led_cb,
+};
 
 static esp_err_t board_ioe_output_en(uint8_t port, uint8_t pin,
                                      gpio_output_level_e level);
@@ -512,6 +532,24 @@ esp_err_t i2c_mcp3221_readADC(i2c_port_t i2c_num, unsigned int *buffer) {
     return ret;
 }
 
+esp_err_t board_set_rgb_led(bool r, bool g, bool b) {
+    esp_err_t err = ESP_OK;
+
+    board_cb.rgb_led[LED_TYPE_R].curr_val =
+        (r) ? RGB_LED_ON_VAL : RGB_LED_OFF_VAL;
+    board_cb.rgb_led[LED_TYPE_G].curr_val =
+        (g) ? RGB_LED_ON_VAL : RGB_LED_OFF_VAL;
+    board_cb.rgb_led[LED_TYPE_B].curr_val =
+        (b) ? RGB_LED_ON_VAL : RGB_LED_OFF_VAL;
+
+    for (int i = 0; i < sizeof(reg_led_cb) / sizeof(reg_led_cb[0]); ++i) {
+        err |= i2c_BCT3253_writeREG(I2C_MASTER_NUM, board_cb.rgb_led[i].address,
+                                    board_cb.rgb_led[i].curr_val);
+    }
+
+    return err;
+}
+
 esp_err_t board_get_weight(uint8_t repeat, float *adc, float *mg) {
     unsigned int adc_tmp;
     unsigned int adc_sum = 0;
@@ -561,49 +599,33 @@ esp_err_t board_led_ctrl(led_type_e led, bool enable) {
     switch (led) {
     case LED_TYPE_W:
         if (enable) {
-            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_R_ADDR,
-                                 RGB_LED_ON_VAL);
-            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_G_ADDR,
-                                 RGB_LED_ON_VAL);
-            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_B_ADDR,
-                                 RGB_LED_ON_VAL);
+            board_set_rgb_led(true, true, true);
         } else {
-            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_R_ADDR,
-                                 RGB_LED_OFF_VAL);
-            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_G_ADDR,
-                                 RGB_LED_OFF_VAL);
-            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_B_ADDR,
-                                 RGB_LED_OFF_VAL);
+            board_set_rgb_led(false, false, false);
         }
         break;
 
     case LED_TYPE_R:
         if (enable) {
-            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_R_ADDR,
-                                 RGB_LED_ON_VAL);
+            board_set_rgb_led(true, false, false);
         } else {
-            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_R_ADDR,
-                                 RGB_LED_OFF_VAL);
+            board_set_rgb_led(false, false, false);
         }
         break;
 
     case LED_TYPE_G:
         if (enable) {
-            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_G_ADDR,
-                                 RGB_LED_ON_VAL);
+            board_set_rgb_led(false, true, false);
         } else {
-            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_G_ADDR,
-                                 RGB_LED_OFF_VAL);
+            board_set_rgb_led(false, false, false);
         }
         break;
 
     case LED_TYPE_B:
         if (enable) {
-            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_B_ADDR,
-                                 RGB_LED_ON_VAL);
+            board_set_rgb_led(false, false, true);
         } else {
-            i2c_BCT3253_writeREG(I2C_MASTER_NUM, RGB_LED_B_ADDR,
-                                 RGB_LED_OFF_VAL);
+            board_set_rgb_led(false, false, false);
         }
         break;
 

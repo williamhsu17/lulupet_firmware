@@ -22,6 +22,10 @@
 // Message Queue for LED task
 QueueHandle_t led_cmd_que = NULL;
 
+static char *led_cmd_type[] = {
+    "off", "w_solid", "r_solid", "b_solid", "g_solid", "b_1Hz", "r_1Hz",
+};
+
 static void led_task(void *pvParameter) {
     int queue_retry = 0;
     unsigned int led_cmd_get = 0;
@@ -43,9 +47,14 @@ static void led_task(void *pvParameter) {
     for (;;) {
         xStatus = xQueueReceive(led_cmd_que, &led_cmd_get, 0);
         if (xStatus == pdPASS) {
-            ESP_LOGI(TAG, "LED CMD: receive %d", led_cmd_get);
+            ESP_LOGI(TAG, "LED CMD: receive %s[%d]", led_cmd_type[led_cmd_get],
+                     led_cmd_get);
             cmd_update = 1;
-            led_cmd_run = led_cmd_get;
+            if (led_cmd_run != led_cmd_get) {
+                board_set_rgb_led(false, false, false);
+                led_cmd_run = led_cmd_get;
+            }
+
             repeat_count = 0;
         } else {
             cmd_update = 0;
@@ -53,85 +62,48 @@ static void led_task(void *pvParameter) {
         switch (led_cmd_run) {
         case LED_ALL_OFF:
             if (cmd_update) {
-                // LED ALL OFF
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03,
-                                     0x0); // set brightness 20mA (R)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x04,
-                                     0x0); // set brightness 20mA (B)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x05,
-                                     0x0); // set brightness 20mA (G)
+                board_set_rgb_led(false, false, false);
             }
             break;
         case LED_WHITE_SOLID:
             if (cmd_update) {
-                // LED White
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03,
-                                     0xC8); // set brightness 20mA (R)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x04,
-                                     0xC8); // set brightness 20mA (B)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x05,
-                                     0xC8); // set brightness 20mA (G)
+                board_set_rgb_led(true, true, true);
             }
             break;
         case LED_RED_SOLID:
             if (cmd_update) {
-                // LED Green
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03,
-                                     0xC8); // set brightness 20mA (R)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x04,
-                                     0x0); // set brightness 20mA (B)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x05,
-                                     0x0); // set brightness 20mA (G)
+                board_set_rgb_led(true, false, false);
             }
             break;
         case LED_BLUE_SOLID:
             if (cmd_update) {
-                // LED Green
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03,
-                                     0x0); // set brightness 20mA (R)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x04,
-                                     0xC8); // set brightness 20mA (B)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x05,
-                                     0x0); // set brightness 20mA (G)
+                board_set_rgb_led(false, false, true);
             }
             break;
         case LED_GREEN_SOLID:
             if (cmd_update) {
-                // LED Green
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03,
-                                     0x0); // set brightness 20mA (R)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x04,
-                                     0x0); // set brightness 20mA (B)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x05,
-                                     0xC8); // set brightness 20mA (G)
+                board_set_rgb_led(false, true, false);
             }
             break;
-        case LED_BLUE_2HZ:
-            // ON cycle
+        case LED_BLUE_1HZ:
             if (repeat_count % 10 == 0) {
                 repeat_count = 0;
-                // LED Blue ON
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03,
-                                     0x0); // set brightness 20mA (R)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x04,
-                                     0xC8); // set brightness 20mA (B)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x05,
-                                     0x0); // set brightness 20mA (G)
+                board_set_rgb_led(false, false, true);
+            } else if (repeat_count % 5 == 0) {
+                board_set_rgb_led(false, false, false);
             }
-            // OFF cycle
-            else if (repeat_count % 5 == 0) {
-                // LED Blue OFF
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x03,
-                                     0x0); // set brightness 20mA (R)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x04,
-                                     0x0); // set brightness 20mA (B)
-                i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x05,
-                                     0x0); // set brightness 20mA (G)
+            repeat_count++;
+            break;
+        case LED_RED_1HZ:
+            if (repeat_count % 10 == 0) {
+                repeat_count = 0;
+                board_set_rgb_led(true, false, false);
+            } else if (repeat_count % 5 == 0) {
+                board_set_rgb_led(false, false, false);
             }
             repeat_count++;
             break;
         default:
-            // Nothing...
             break;
         }
 
