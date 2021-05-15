@@ -24,6 +24,7 @@
 
 //#include "app_camera.h"
 #include "app_cmd.h"
+#include "app_key.h"
 #include "app_led.h"
 #include "app_weight.h"
 #include "app_wifi.h"
@@ -31,6 +32,7 @@
 #include "esp_log.h"
 #include "include/board_driver.h"
 #include "include/util.h"
+#include "timer_tick.h"
 
 #define TAG "app_main"
 
@@ -57,14 +59,16 @@ static esp_err_t event_loop_init(void) {
 void app_main() {
     // app_camera_main();   // legacy initial camera
     board_init();
-
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     ESP_ERROR_CHECK(event_loop_init());
+    timer_tick_init();
 
 #if (FUNC_CMD_TASK)
     app_cmd_main(); // Init command line interface
 #endif
-    app_led_main(); // Init led task
-    // app_weight_main(); // Init weight task
-    app_wifi_main(); // Init and Connect to WiFi
+
+    app_key_main(service_event_loop);
+    app_led_main();    // Init led task
+    app_weight_main(); // Init weight task
+    app_wifi_main();   // Init and Connect to WiFi
 }
