@@ -30,7 +30,9 @@
 extern "C" {
 #endif
 
-void app_wifi_main();
+#include "esp_event_loop.h"
+
+void app_wifi_main(esp_event_loop_handle_t event_loop);
 
 #ifdef __cplusplus
 }

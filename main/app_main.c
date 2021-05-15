@@ -68,7 +68,7 @@ void app_main() {
 #endif
 
     app_key_main(service_event_loop);
-    app_led_main();    // Init led task
-    app_weight_main(); // Init weight task
-    app_wifi_main();   // Init and Connect to WiFi
+    app_led_main();                    // Init led task
+    app_weight_main();                 // Init weight task
+    app_wifi_main(service_event_loop); // Init and Connect to WiFi
 }

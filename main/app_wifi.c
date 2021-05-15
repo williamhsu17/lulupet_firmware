@@ -1,26 +1,3 @@
-/* ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in
- * which case, it is free of charge, to any person obtaining a copy of this
- * software and associated documentation files (the "Software"), to deal in the
- * Software without restriction, including without limitation the rights to use,
- * copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
- * the Software, and to permit persons to whom the Software is furnished to do
- * so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- */
 #include "app_wifi.h"
 #include "../../json/cJSON/cJSON.h"
 #include "blufi_example.h"
@@ -32,7 +9,6 @@
 #include "esp_bt_main.h"
 #include "esp_camera.h"
 #include "esp_event.h"
-#include "esp_event_loop.h"
 #include "esp_gap_ble_api.h"
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
@@ -47,8 +23,10 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "img_converters.h"
+#include "include/app_key.h"
 #include "include/app_led.h"
 #include "include/board_driver.h"
+#include "include/event.h"
 #include "include/util.h"
 #include "lwip/apps/sntp.h"
 #include "lwip/err.h"
@@ -65,7 +43,7 @@
 
 #define TAG "app_wifi"
 
-#define BLUFI_DEVICE_NAME "BLUFI_DEVICE"
+#define BLUFI_DEVICE_NAME "BLUFI_DEVICE" //"Lulupet AI Litter Box"
 #define DATA_LENGTH 512    /*!< Data buffer length of test buffer */
 #define RW_TEST_LENGTH 128 /*!< Data length for r/w test, [0,DATA_LENGTH] */
 #define DELAY_TIME_BETWEEN_ITEMS_MS                                            \
@@ -97,8 +75,8 @@
 #define EXAMPLE_WIFI_SSID "SlingXCorp"
 #define EXAMPLE_WIFI_PASS "25413113"
 #define WIFI_TEST_MODE 0
-#define BLUFI_CHK_CONN_MS 10000 // TODO: can be set by command/config file
-#define WIFI_CONN_CHK_MS 10000 // TODO: can be set by command/config file
+#define BLUFI_CHK_CONN_MS 300000 // TODO: can be set by command/config file
+#define WIFI_CONN_CHK_MS 10000   // TODO: can be set by command/config file
 #define WIFI_CONN_RETRY 4
 
 static uint8_t example_service_uuid128[32] = {
@@ -161,14 +139,22 @@ char lulupet_token[10] = "WebLid118";
 char lulupet_lid_get[20];
 char lulupet_token_get[180];
 
+typedef struct {
+    key_loop_event_t key_event;
+} task_connect_cb_t;
+
+static task_connect_cb_t task_conn_cb;
+
 extern const char howsmyssl_com_root_cert_pem_start[] asm(
     "_binary_lulupet_com_root_cert_pem_start");
 extern const char howsmyssl_com_root_cert_pem_end[] asm(
     "_binary_lulupet_com_root_cert_pem_end");
 
 static esp_err_t esp_err_print(esp_err_t err, const char *func, uint32_t line);
+static void service_connect_event_handler(void *arg, esp_event_base_t base,
+                                          int32_t event_id, void *event_data);
 static void blufi_event_callback(esp_blufi_cb_event_t event,
-                                   esp_blufi_cb_param_t *param);
+                                 esp_blufi_cb_param_t *param);
 static void wifi_init(void);
 static void wifi_init_from_nvs(void);
 static void wifi_check_connect(uint32_t wait_ms, uint8_t retry);
@@ -731,20 +717,20 @@ static void wifi_init_from_nvs(void) {
 
 static void wifi_check_connect(uint32_t wait_ms, uint8_t retry) {
 
-    if ( retry == 0 ) {
+    if (retry == 0) {
         retry = 1;
     }
 
     for (uint8_t i = 0; i < retry; ++i) {
-        ESP_LOGI(TAG, "try to connect to WiFi %d time", i+1);
-        if ( wifi_event_check_conn(wait_ms) == true ) {
+        ESP_LOGI(TAG, "try to connect to WiFi %d time", i + 1);
+        if (wifi_event_check_conn(wait_ms) == true) {
             return;
-            
-        } 
-        ESP_LOGI(TAG, "can't connecte to AP[SSID/PWD:%s/%s]", sta_config.sta.ssid, sta_config.sta.password);
+        }
+        ESP_LOGI(TAG, "can't connecte to AP[SSID/PWD:%s/%s]",
+                 sta_config.sta.ssid, sta_config.sta.password);
     }
 
-    while(1) {
+    while (1) {
         set_led_cmd(LED_RED_1HZ);
         // TODO: Wait key event
         vTaskDelay(1000 / portTICK_PERIOD_MS);
@@ -759,10 +745,11 @@ static void wifi_event_init(void) {
 static bool wifi_event_check_conn(uint32_t wait_ms) {
     EventBits_t wifi_event_bits;
 
-    wifi_event_bits = xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true,
-                        wait_ms / portTICK_PERIOD_MS);
+    wifi_event_bits =
+        xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true,
+                            wait_ms / portTICK_PERIOD_MS);
     ESP_LOGI(TAG, "wifi_event_bits: 0x%x", wifi_event_bits);
-    if ( (wifi_event_bits & WIFI_CONNECTED_BIT) ) {
+    if ((wifi_event_bits & WIFI_CONNECTED_BIT)) {
         return true;
     } else {
         return false;
@@ -901,7 +888,7 @@ static esp_blufi_callbacks_t blufi_callbacks = {
 };
 
 static void blufi_event_callback(esp_blufi_cb_event_t event,
-                                   esp_blufi_cb_param_t *param) {
+                                 esp_blufi_cb_param_t *param) {
     /* actually, should post to blufi_task handle the procedure,
      * now, as a example, we do it more simply */
     switch (event) {
@@ -1019,8 +1006,7 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
         }
         ap_config.ap.max_connection = param->softap_max_conn_num.max_conn_num;
         esp_wifi_set_config(WIFI_IF_AP, &ap_config);
-        BLUFI_INFO("Recv SOFTAP MAX CONN NUM %d",
-                   ap_config.ap.max_connection);
+        BLUFI_INFO("Recv SOFTAP MAX CONN NUM %d", ap_config.ap.max_connection);
         break;
     case ESP_BLUFI_EVENT_RECV_SOFTAP_AUTH_MODE:
         if (param->softap_auth_mode.auth_mode >= WIFI_AUTH_MAX) {
@@ -1099,8 +1085,8 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
     }
 }
 
-static void example_gap_event_handler(esp_gap_ble_cb_event_t event,
-                                      esp_ble_gap_cb_param_t *param) {
+static void gap_event_handler(esp_gap_ble_cb_event_t event,
+                              esp_ble_gap_cb_param_t *param) {
     switch (event) {
     case ESP_GAP_BLE_ADV_DATA_SET_COMPLETE_EVT:
         esp_ble_gap_start_advertising(&ble_adv_params);
@@ -1118,14 +1104,14 @@ static void blufi_init(void) {
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     ret = esp_bt_controller_init(&bt_cfg);
     if (ret) {
-        BLUFI_ERROR("%s:L%d initialize bt controller failed: %s"
-        , __func__, __LINE__, esp_err_to_name(ret));
+        BLUFI_ERROR("%s:L%d initialize bt controller failed: %s", __func__,
+                    __LINE__, esp_err_to_name(ret));
     }
 
     ret = esp_bt_controller_enable(ESP_BT_MODE_BLE);
     if (ret) {
-        BLUFI_ERROR("%s:L%d enable bt controller failed: %s"
-        , __func__, __LINE__, esp_err_to_name(ret));
+        BLUFI_ERROR("%s:L%d enable bt controller failed: %s", __func__,
+                    __LINE__, esp_err_to_name(ret));
         return;
     }
 
@@ -1148,32 +1134,48 @@ static void blufi_init(void) {
 
     BLUFI_INFO("BLUFI VERSION %04x", esp_blufi_get_version());
 
-    ret = esp_ble_gap_register_callback(example_gap_event_handler);
+    ret = esp_ble_gap_register_callback(gap_event_handler);
     if (ret) {
-        BLUFI_ERROR("%s:L%d gap register failed, error code = %x", __func__, __LINE__, ret);
+        BLUFI_ERROR("%s:L%d gap register failed, error code = %x", __func__,
+                    __LINE__, ret);
         return;
     }
 
     ret = esp_blufi_register_callbacks(&blufi_callbacks);
     if (ret) {
-        BLUFI_ERROR("%s:L%d blufi register failed, error code = %x", __func__, __LINE__, ret);
+        BLUFI_ERROR("%s:L%d blufi register failed, error code = %x", __func__,
+                    __LINE__, ret);
         return;
     }
-
-    esp_blufi_profile_init();
 }
 
 static void blufi_check_connect(void) {
+    key_loop_event_t *key_event = &task_conn_cb.key_event;
 
-    if ( wifi_event_check_conn(WIFI_CONNECTED_BIT) )
-        return;
+    blufi_init();
+    while (1) {
+        esp_blufi_profile_init(); // start blufi funciton
+        set_led_cmd(LED_BLUE_1HZ);
+        if (wifi_event_check_conn(BLUFI_CHK_CONN_MS))
+            return;
 
-    BLUFI_WARNING("blufi can't connect to AP, wait key press > 5 sec");
+        BLUFI_WARNING(
+            "blufi can't connect to AP, wait %s",
+            app_key_event_type_str(KEY_EVENT_PRESS_2_TIMES_WITHIN_3_SEC));
+        set_led_cmd(LED_ALL_OFF);
+        esp_blufi_profile_deinit(); // stop blufi funciton
 
-    while(1) {
-        BLUFI_WARNING("wait key event");
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-        // TODO: get key event
+        while (1) {
+            BLUFI_WARNING("wait key event");
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            if (key_event->key_event_type ==
+                KEY_EVENT_PRESS_2_TIMES_WITHIN_3_SEC) {
+                BLUFI_INFO("receive key event: %s",
+                           app_key_event_type_str(key_event->key_event_type));
+                key_event->key_event_type = KEY_EVENT_NONE; // reset ley event
+                break;
+            }
+        }
     }
 }
 
@@ -1184,8 +1186,9 @@ static void check_time_sntp(void) {
     localtime_r(&now, &timeinfo);
     // Is time set? If not, tm_year will be (1970 - 1900).
     if (timeinfo.tm_year < (2020 - 1900)) {
-        ESP_LOGI(TAG, "Time is not set yet. Connecting to WiFi and getting time "
-                   "over NTP.");
+        ESP_LOGI(TAG,
+                 "Time is not set yet. Connecting to WiFi and getting time "
+                 "over NTP.");
         obtain_time();
         // update 'now' variable with current time
         time(&now);
@@ -1621,17 +1624,47 @@ static void http_post_data(void) {
     return;
 }
 
-void app_wifi_main(void) {
+static void service_connect_event_handler(void *arg, esp_event_base_t base,
+                                          int32_t event_id, void *event_data) {
+    switch (event_id) {
+    case LULUPET_EVENT_KEY:
+        memcpy(&task_conn_cb.key_event, (key_loop_event_t *)event_data,
+               sizeof(key_loop_event_t));
+        ESP_LOGW(TAG, "key event: %s",
+                 app_key_event_type_str(task_conn_cb.key_event.key_event_type));
+        break;
+    default:
+        break;
+    }
+}
+
+void app_wifi_main(esp_event_loop_handle_t event_loop) {
     // Creat message queue and LED task
     ESP_LOGI(TAG, "start connect process");
     set_led_cmd(LED_BLUE_SOLID);
 
-    // Read WiFi setting from NVS
-    // IF YES, connect to WiFi
-    // IF NO , run BlueFi
-    nvs_init();
+    esp_event_handler_register_with(event_loop, LULUPET_EVENT_BASE,
+                                    ESP_EVENT_ANY_ID,
+                                    service_connect_event_handler, NULL);
+
     wifi_event_init();
-    if (nvs_read_wifichecked() == 1) {
+    nvs_init();
+    if (!nvs_read_wifichecked()) {
+        BLUFI_INFO("w/o WiFi configuration in NVS. run blufi");
+        wifi_init();
+        blufi_check_connect();
+        BLUFI_INFO("connected to AP");
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+        BLUFI_INFO("enable lid and token");
+        http_get_enable();
+        nvs_write_lid_token();
+        BLUFI_INFO("store WiFi setting to NVS");
+        nvs_set_wifi_val();
+        set_led_cmd(LED_ALL_OFF);
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
+        BLUFI_WARNING("reboot");
+        esp_restart();
+    } else {
         ESP_LOGI(TAG, "load lid token from nvs");
         nvs_read_lid_token();
         ESP_LOGI(TAG, "load WiFi Setting from nvs");
@@ -1643,26 +1676,8 @@ void app_wifi_main(void) {
         check_time_sntp();
         ESP_LOGI(TAG, "Update time from SNTP");
         vTaskDelay(30000 / portTICK_PERIOD_MS);
-        //ESP_LOGI(TAG, "Clear NVS setting");
-        //nvs_reset_wifi_val();
-    } else {
-        BLUFI_INFO("w/o WiFi configuration in NVS. run blufi");
-        set_led_cmd(LED_BLUE_1HZ);
-        wifi_init();
-        blufi_init();
-        blufi_check_connect();
-        BLUFI_INFO("connected to AP");
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-        BLUFI_INFO("enable lid and token");
-        http_get_enable();
-        nvs_write_lid_token();
-        BLUFI_INFO("store WiFi setting to NVS");
-        nvs_set_wifi_val();
-        // TBD
-        set_led_cmd(LED_ALL_OFF);
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
-        BLUFI_WARNING("reboot");
-        esp_restart();
+        // ESP_LOGI(TAG, "Clear NVS setting");
+        // nvs_reset_wifi_val();
     }
 
     app_httpc_main();
