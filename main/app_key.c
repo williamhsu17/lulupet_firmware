@@ -42,7 +42,7 @@ static void key_post_evnet(esp_event_loop_handle_t event_loop,
     key_loop_event_t event;
     event.key_event_type = type;
 
-    ESP_LOGW(TAG, "key event post to: %s", key_event_name[type]);
+    ESP_LOGW(TAG, "key event post to: %s", app_key_event_type_str(type));
 
     esp_event_post_to(event_loop, LULUPET_EVENT_BASE, LULUPET_EVENT_KEY, &event,
                       sizeof(event), pdMS_TO_TICKS(100));
@@ -122,6 +122,10 @@ static void key_task(void *pvParameter) {
 
         vTaskDelay(KEY_TASK_PERIOD_MS / portTICK_PERIOD_MS);
     }
+}
+
+char *app_key_event_type_str(key_event_type_e type) {
+    return key_event_name[type];
 }
 
 void app_key_main(esp_event_loop_handle_t event_loop) {
