@@ -172,6 +172,7 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
 static void wifi_init(void);
 static void wifi_init_from_nvs(void);
 static void wifi_check_connect(uint32_t wait_ms, uint8_t retry);
+static void wifi_event_init(void);
 static bool wifi_event_check_conn(uint32_t wait_ms);
 static void set_led_cmd(unsigned int led_cmd_load);
 static void obtain_time(void);
@@ -564,7 +565,7 @@ static esp_err_t nvs_init(void) {
         if (err != ESP_OK)
             esp_err_print(err, __func__, __LINE__);
     }
-    ESP_LOGI(TAG, "nvs readdy");
+    ESP_LOGI(TAG, "nvs ready");
     return err;
 }
 
@@ -748,6 +749,11 @@ static void wifi_check_connect(uint32_t wait_ms, uint8_t retry) {
         // TODO: Wait key event
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
+}
+
+static void wifi_event_init(void) {
+    wifi_event_group = xEventGroupCreate();
+    xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
 }
 
 static bool wifi_event_check_conn(uint32_t wait_ms) {
@@ -1624,8 +1630,7 @@ void app_wifi_main(void) {
     // IF YES, connect to WiFi
     // IF NO , run BlueFi
     nvs_init();
-    wifi_event_group = xEventGroupCreate();
-    xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
+    wifi_event_init();
     if (nvs_read_wifichecked() == 1) {
         ESP_LOGI(TAG, "load lid token from nvs");
         nvs_read_lid_token();
