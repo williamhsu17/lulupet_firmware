@@ -36,13 +36,10 @@ static const char *prompt;
         }                                                                      \
     } while (0)
 
-static int cmd_led_set(int argc, char **argv);
-static esp_err_t register_led_command(void);
-#if (FUNC_WEIGHT_FAKE)
-static int cmd_weight_condition_set(int argc, char **argv);
-#endif
-static int cmd_weight_get_param(int argc, char **argv);
-static esp_err_t register_weight_command(void);
+struct {
+    struct arg_int *en;
+    struct arg_end *end;
+} cmd_pir_pwr_args;
 
 struct {
     struct arg_str *led_type;
@@ -50,7 +47,66 @@ struct {
     struct arg_end *end;
 } cmd_led_set_args;
 
+struct {
+    struct arg_str *list;
+    struct arg_end *end;
+} cmd_weight_get_param_args;
+
+struct {
+    struct arg_int *repeat;
+    struct arg_end *end;
+} cmd_weight_get_val_args;
+
 extern weight_task_cb w_task_cb;
+
+static int cmd_led_set(int argc, char **argv);
+#if (FUNC_WEIGHT_FAKE)
+static int cmd_weight_condition_set(int argc, char **argv);
+#endif
+static int cmd_weight_get_param(int argc, char **argv);
+static int cmd_key_status(int argc, char **argv);
+static int cmd_pir_pwr(int argc, char **argv);
+static int cmd_pir_status(int argc, char **argv);
+
+static int cmd_pir_pwr(int argc, char **argv) {
+    esp_err_t err = ESP_OK;
+
+    PARSE_ARG(cmd_pir_pwr_args);
+
+    if (cmd_pir_pwr_args.en->count == 0) {
+        printf("param err");
+        goto cmd_pir_pwr_err;
+    }
+
+    if (cmd_pir_pwr_args.en->ival[0] != 0 &&
+        cmd_pir_pwr_args.en->ival[0] != 1) {
+        printf("en <0|1>\n");
+        goto cmd_pir_pwr_err;
+    }
+
+    err = board_set_pir_pwr((bool)cmd_pir_pwr_args.en->ival[0]);
+
+    if (err == ESP_OK)
+        printf("ok\n");
+    else
+        printf("err: %s\n", esp_err_to_name(err));
+
+    return 0;
+
+cmd_pir_pwr_err:
+    arg_print_errors(stderr, cmd_pir_pwr_args.end, argv[0]);
+    return -1;
+}
+
+static int cmd_pir_status(int argc, char **argv) {
+    printf("pir: %s\n", board_get_pir_status() ? "trigger" : "non-trigger");
+    return 0;
+}
+
+static int cmd_key_status(int argc, char **argv) {
+    printf("key: %s\n", board_get_key_status() ? "press" : "release");
+    return 0;
+}
 
 static int cmd_led_set(int argc, char **argv) {
     esp_err_t err = ESP_OK;
@@ -96,29 +152,6 @@ cmd_led_set_err:
     return -1;
 }
 
-static esp_err_t register_led_command(void) {
-    cmd_led_set_args.led_type =
-        arg_str1("t", "led_type", "<w|r|g|b|IR|W>", "led type");
-    cmd_led_set_args.en = arg_int0("e", "enable", "<0|1>", "enable led");
-    cmd_led_set_args.end = arg_end(2);
-
-    const esp_console_cmd_t cmds[] = {
-        {
-            .command = "led_set",
-            .help = "led set",
-            .hint = NULL,
-            .func = &cmd_led_set,
-            .argtable = &cmd_led_set_args,
-        },
-    };
-
-    for (int i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++) {
-        ESP_ERROR_CHECK(esp_console_cmd_register(&cmds[i]));
-    }
-
-    return ESP_OK;
-}
-
 #if (FUNC_WEIGHT_FAKE)
 struct {
     struct arg_str *condition_type;
@@ -157,11 +190,6 @@ cmd_weight_condition_set_err:
 }
 #endif
 
-struct {
-    struct arg_str *list;
-    struct arg_end *end;
-} cmd_weight_get_param_args;
-
 static int cmd_weight_get_param(int argc, char **argv) {
     PARSE_ARG(cmd_weight_get_param_args);
 
@@ -180,8 +208,47 @@ static int cmd_weight_get_param(int argc, char **argv) {
 
     return 0;
 }
+static int cmd_weight_get_val(int argc, char **argv) { 
 
-static esp_err_t register_weight_command(void) {
+    PARSE_ARG(cmd_weight_get_val_args);
+
+    if (cmd_weight_get_val_args.repeat == 0 ) {
+        printf("param err");
+        goto cmd_weight_get_val_err;
+    }
+
+    if (cmd_weight_get_val_args.repeat->ival[0] < 1 || 
+        cmd_weight_get_val_args.repeat->ival[0] > 255 ) {
+        printf("repeat <1...255>\n");
+        goto cmd_weight_get_val_err;
+    }
+
+    float adc;
+    float mg;
+
+    esp_err_t err = board_get_weight((uint8_t)cmd_weight_get_val_args.repeat->ival[0], &adc, &mg);
+
+    if (err == ESP_OK) {
+        printf("adc: %.3f\n", adc);
+        printf("weight: %.3f mg\n", mg);
+    } else {
+        printf("adc: %.3f\n", adc);
+        printf("weight: %.3f mg\n", mg);
+        printf("err: %s\n", esp_err_to_name(err));
+    }
+
+    return 0;
+
+cmd_weight_get_val_err:
+    arg_print_errors(stderr, cmd_weight_get_val_args.end, argv[0]);
+    return -1;
+}
+
+static esp_err_t register_manufacture_command(void) {
+    cmd_led_set_args.led_type =
+        arg_str1("t", "led_type", "<w|r|g|b|IR|W>", "led type");
+    cmd_led_set_args.en = arg_int0("e", "enable", "<0|1>", "enable led");
+    cmd_led_set_args.end = arg_end(2);
 
 #if (FUNC_WEIGHT_FAKE)
     cmd_weight_condition_set_args.condition_type = arg_str1(
@@ -195,7 +262,20 @@ static esp_err_t register_weight_command(void) {
         arg_str1("l", "weight_get_param", "<1>", "weight list parameters");
     cmd_weight_get_param_args.end = arg_end(1);
 
+    cmd_weight_get_val_args.repeat = arg_int0("r", "repeat", "<1...255>", "adc repeat time");
+    cmd_weight_get_val_args.end = arg_end(1);
+
+    cmd_pir_pwr_args.en = arg_int0("e", "enable", "<0|1>", "enable pir");
+    cmd_pir_pwr_args.end = arg_end(1);
+
     const esp_console_cmd_t cmds[] = {
+        {
+            .command = "led_set",
+            .help = "led set",
+            .hint = NULL,
+            .func = &cmd_led_set,
+            .argtable = &cmd_led_set_args,
+        },
 #if (FUNC_WEIGHT_FAKE)
         {
             .command = "weight_condition_set",
@@ -206,11 +286,39 @@ static esp_err_t register_weight_command(void) {
         },
 #endif
         {
-            .command = "weight_get",
-            .help = "weight get",
+            .command = "weight_get_param",
+            .help = "weight get task param",
             .hint = NULL,
             .func = &cmd_weight_get_param,
             .argtable = &cmd_weight_get_param_args,
+        },
+        {
+            .command = "weight_get_val",
+            .help = "weight get adc/weight value",
+            .hint = NULL,
+            .func = &cmd_weight_get_val,
+            .argtable = &cmd_weight_get_val_args,
+        },
+        {
+            .command = "key_status",
+            .help = "key status",
+            .hint = NULL,
+            .func = &cmd_key_status,
+            .argtable = NULL,
+        },
+        {
+            .command = "pir_status",
+            .help = "pir status",
+            .hint = NULL,
+            .func = &cmd_pir_status,
+            .argtable = NULL,
+        },
+        {
+            .command = "pir_pwr",
+            .help = "pir set power",
+            .hint = NULL,
+            .func = &cmd_pir_pwr,
+            .argtable = &cmd_pir_pwr_args,
         },
     };
 
@@ -223,8 +331,7 @@ static esp_err_t register_weight_command(void) {
 
 static void cmd_task(void *pvParameter) {
     ESP_ERROR_CHECK(esp_console_register_help_command());
-    ESP_ERROR_CHECK(register_led_command());
-    ESP_ERROR_CHECK(register_weight_command());
+    ESP_ERROR_CHECK(register_manufacture_command());
 
     for (;;) {
         /* Main loop */

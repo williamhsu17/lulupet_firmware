@@ -24,6 +24,8 @@
 #ifndef _APP_CAMERA_H_
 #define _APP_CAMERA_H_
 
+#include "esp_camera.h"
+
 #if CONFIG_CAMERA_MODEL_WROVER_KIT
 #define PWDN_GPIO_NUM    -1
 #define RESET_GPIO_NUM   -1
@@ -144,6 +146,7 @@
 extern "C" {
 #endif
 
+void camera_take_photo(camera_fb_t **fb);
 void app_camera_main();
 
 #ifdef __cplusplus
