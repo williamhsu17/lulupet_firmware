@@ -40,6 +40,9 @@ esp_err_t
 nvs_write_wifi_val(int32_t set_value,
                    wifi_config_t *wifi_config);        // TODO: move to task_nvs
 esp_err_t nvs_write_lid_token(char *lid, char *token); // TODO: move to task_nvs
+char *app_wifi_get_lid(void);
+char *app_wifi_get_token(void);
+bool app_wifi_check_connect(uint32_t wait_ms);
 void app_wifi_main(esp_event_loop_handle_t event_loop);
 
 #ifdef __cplusplus
