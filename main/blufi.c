@@ -83,10 +83,7 @@ static bool gl_sta_connected = false;
 static uint8_t gl_sta_bssid[6];
 static uint8_t gl_sta_ssid[32];
 static int gl_sta_ssid_len;
-static char urlbuffer[100];
 /* lulupet API id and token */
-static char lulupet_lid[10] = "lid118";
-static char lulupet_token[10] = "WebLid118";
 static char lulupet_lid_get[20];
 static char lulupet_token_get[180];
 static wifi_config_t sta_config;
