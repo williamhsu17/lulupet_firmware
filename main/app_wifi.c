@@ -35,6 +35,8 @@
 #define NVSAPPTOKEN "apptoken"
 
 /* Test WiFi STA configuration */
+#define WIFI_CHECK_WAIT_TIME_MS 10000
+#define WIFI_CHECK_KEY_TIMES_MS 100
 #define WIFI_CONN_CHK_MS 10000 // TODO: can be set by command/config file
 #define WIFI_CONN_RETRY 4
 
@@ -214,6 +216,12 @@ static void wifi_init_from_nvs(void) {
     ESP_ERROR_CHECK(esp_wifi_start());
 }
 
+static void wifi_system_reset(void) {
+    ESP_LOGW(TAG, "reboot");
+    set_led_cmd(LED_ALL_OFF);
+    esp_restart();
+}
+
 static void wifi_check_connect(uint32_t wait_ms, uint8_t retry) {
 
     if (retry == 0) {
@@ -225,14 +233,42 @@ static void wifi_check_connect(uint32_t wait_ms, uint8_t retry) {
         if (app_wifi_check_connect(wait_ms) == true) {
             return;
         }
-        ESP_LOGI(TAG, "can't connecte to AP[SSID/PWD:%s/%s]",
-                 sta_config.sta.ssid, sta_config.sta.password);
     }
 
+    ESP_LOGI(TAG, "can't connecte to AP[SSID:%s]", sta_config.sta.ssid);
+    set_led_cmd(LED_RED_1HZ);
+
+    uint32_t wifi_check_key_time = 0;
     while (1) {
-        set_led_cmd(LED_RED_1HZ);
-        // TODO: Wait key event
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        vTaskDelay(WIFI_CHECK_KEY_TIMES_MS / portTICK_PERIOD_MS);
+        wifi_check_key_time += WIFI_CHECK_KEY_TIMES_MS;
+
+        if (task_conn_cb.key_event.key_event_type ==
+            KEY_EVENT_PRESS_2_TIMES_WITHIN_3_SEC) {
+            ESP_LOGW(
+                TAG, "receive key event: %s",
+                app_key_event_type_str(task_conn_cb.key_event.key_event_type));
+            task_conn_cb.key_event.key_event_type =
+                KEY_EVENT_NONE; // reset key event
+            nvs_reset_wifi_val();
+            vTaskDelay(WIFI_CHECK_KEY_TIMES_MS / portTICK_PERIOD_MS);
+            wifi_system_reset();
+        }
+
+        if (task_conn_cb.key_event.key_event_type ==
+            KEY_EVENT_PRESS_OVER_5_SEC) {
+            ESP_LOGW(
+                TAG, "receive key event: %s",
+                app_key_event_type_str(task_conn_cb.key_event.key_event_type));
+            task_conn_cb.key_event.key_event_type =
+                KEY_EVENT_NONE; // reset key event
+            wifi_system_reset();
+        }
+
+        if (wifi_check_key_time >= WIFI_CHECK_WAIT_TIME_MS) {
+            wifi_system_reset();
+            ;
+        }
     }
 }
 
