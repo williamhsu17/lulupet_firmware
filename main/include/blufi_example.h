@@ -5,6 +5,7 @@
 
 #define BLUFI_EXAMPLE_TAG "BluFi"
 #define BLUFI_INFO(fmt, ...) ESP_LOGI(BLUFI_EXAMPLE_TAG, fmt, ##__VA_ARGS__)
+#define BLUFI_DEBUG(fmt, ...) ESP_LOGD(BLUFI_EXAMPLE_TAG, fmt, ##__VA_ARGS__)
 #define BLUFI_WARNING(fmt, ...) ESP_LOGW(BLUFI_EXAMPLE_TAG, fmt, ##__VA_ARGS__)
 #define BLUFI_ERROR(fmt, ...) ESP_LOGE(BLUFI_EXAMPLE_TAG, fmt, ##__VA_ARGS__)
 
