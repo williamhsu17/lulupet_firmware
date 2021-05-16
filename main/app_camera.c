@@ -21,9 +21,11 @@
  */
 #include "esp_log.h"
 #include "esp_camera.h"
-#include "app_camera.h"
 #include "sdkconfig.h"
 #include "driver/gpio.h"
+#include "include/app_camera.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #define CAMERA_FRAME_SIZE FRAMESIZE_XGA
 
@@ -33,8 +35,7 @@
 
 static const char *TAG = "app_camera";
 
-
-void init_cam_gpio()
+static void init_cam_gpio(void)
 {
 	gpio_config_t io_conf;
 	
@@ -54,8 +55,25 @@ void init_cam_gpio()
 	
 }
 
+void camera_take_photo(camera_fb_t **fb){
+    *fb = esp_camera_fb_get();
 
-void app_camera_main ()
+    if (!fb) {
+        ESP_LOGE(TAG, "camera take photo failed");
+        esp_camera_fb_return(*fb);
+        ESP_LOGE(
+            TAG,
+            "resolve camera problem, reboot system"); // TODO: record into log
+        while (1) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+        esp_restart();
+        return;
+    }
+    ESP_LOGI(TAG, "camera take photo ok");
+}
+
+void app_camera_main(void)
 {
 	init_cam_gpio();
 	
