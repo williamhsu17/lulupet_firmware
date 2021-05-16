@@ -53,13 +53,6 @@
 #define NO_OF_SAMPLES 500 // Multisampling
 
 /* Constants that aren't configurable in menuconfig */
-#define SERVER_URL "lulupet.williamhsu.com.tw"
-#define HTTP_PHOTO_URL "http://lulupet.williamhsu.com.tw/imageHelper/"
-#define HTTPS_PHOTO_URL "https://lulupet.williamhsu.com.tw/imageHelper/"
-#define HTTP_RAW_URL "http://lulupet.williamhsu.com.tw/rawdata"
-#define HTTPS_ENABLE_URL "https://lulupet.williamhsu.com.tw/litter/enable/"
-#define HTTP_ENABLE_URL "http://lulupet.williamhsu.com.tw/litter/enable/"
-#define MAX_HTTP_RECV_BUFFER 512
 #define MAX_HTTP_OUTPUT_BUFFER 2048
 #define DUMMY_SENSOR 1
 #define WIFI_LIST_NUM 10
@@ -126,18 +119,18 @@ static EventGroupHandle_t wifi_event_group;
 /* The event group allows multiple bits for each event,
    but we only care about one event - are we connected
    to the AP with an IP? */
-const int WIFI_CONNECTED_BIT = BIT0;
+static const int WIFI_CONNECTED_BIT = BIT0;
 /* store the station info for send back to phone */
 static bool gl_sta_connected = false;
 static uint8_t gl_sta_bssid[6];
 static uint8_t gl_sta_ssid[32];
 static int gl_sta_ssid_len;
-char urlbuffer[100];
+static char urlbuffer[100];
 /* lulupet API id and token */
-char lulupet_lid[10] = "lid118";
-char lulupet_token[10] = "WebLid118";
-char lulupet_lid_get[20];
-char lulupet_token_get[180];
+static char lulupet_lid[10] = "lid118";
+static char lulupet_token[10] = "WebLid118";
+static char lulupet_lid_get[20];
+static char lulupet_token_get[180];
 
 typedef struct {
     key_loop_event_t key_event;
@@ -178,11 +171,9 @@ static esp_err_t nvs_init(void);
 static int32_t nvs_read_wifichecked(void);
 static esp_err_t nvs_write_wifi_val(int32_t set_value,
                                     wifi_config_t *wifi_config);
-static esp_err_t nvs_set_wifi_val(void);
 static esp_err_t nvs_reset_wifi_val(void);
 static esp_err_t nvs_read_lid_token(void);
 static esp_err_t nvs_read_wifi_config(void);
-static esp_err_t nvs_write_lid_token(void);
 
 static esp_err_t event_handler(void *ctx, system_event_t *event);
 
@@ -560,32 +551,6 @@ static esp_err_t nvs_init(void) {
     return err;
 }
 
-static esp_err_t nvs_write_lid_token(void) {
-    nvs_handle_t handle;
-    esp_err_t err;
-
-    // Open
-    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
-    if (err != ESP_OK) {
-        return esp_err_print(err, __func__, __LINE__);
-    }
-
-    // Write
-    ESP_ERROR_CHECK(nvs_set_blob(handle, NVSAPPLID, &lulupet_lid_get,
-                                 sizeof(lulupet_lid_get)));
-    ESP_ERROR_CHECK(nvs_set_blob(handle, NVSAPPTOKEN, &lulupet_token_get,
-                                 sizeof(lulupet_token_get)));
-    // Commit
-    err = nvs_commit(handle);
-    if (err != ESP_OK) {
-        return esp_err_print(err, __func__, __LINE__);
-    }
-
-    // Close
-    nvs_close(handle);
-    return ESP_OK;
-}
-
 static esp_err_t nvs_write_wifi_val(int32_t set_value,
                                     wifi_config_t *wifi_config) {
     nvs_handle_t handle;
@@ -611,11 +576,6 @@ static esp_err_t nvs_write_wifi_val(int32_t set_value,
     // Close
     nvs_close(handle);
     return ESP_OK;
-}
-
-static esp_err_t nvs_set_wifi_val(void) {
-    ESP_LOGI(TAG, "%s:L%d", __func__, __LINE__);
-    return nvs_write_wifi_val(1, &sta_config);
 }
 
 static esp_err_t nvs_reset_wifi_val(void) {
@@ -1294,7 +1254,7 @@ static void http_post_task(void *pvParameter) {
     }
 }
 
-esp_err_t http_event_handler(esp_http_client_event_t *evt) {
+static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
     switch (evt->event_id) {
     case HTTP_EVENT_ERROR:
         ESP_LOGD(TAG, "HTTP_EVENT_ERROR");
@@ -1667,6 +1627,37 @@ static void service_connect_event_handler(void *arg, esp_event_base_t base,
     }
 }
 
+esp_err_t nvs_set_wifi_val(void) {
+    ESP_LOGI(TAG, "%s:L%d", __func__, __LINE__);
+    return nvs_write_wifi_val(1, &sta_config);
+}
+
+esp_err_t nvs_write_lid_token(void) {
+    nvs_handle_t handle;
+    esp_err_t err;
+
+    // Open
+    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) {
+        return esp_err_print(err, __func__, __LINE__);
+    }
+
+    // Write
+    ESP_ERROR_CHECK(nvs_set_blob(handle, NVSAPPLID, &lulupet_lid_get,
+                                 sizeof(lulupet_lid_get)));
+    ESP_ERROR_CHECK(nvs_set_blob(handle, NVSAPPTOKEN, &lulupet_token_get,
+                                 sizeof(lulupet_token_get)));
+    // Commit
+    err = nvs_commit(handle);
+    if (err != ESP_OK) {
+        return esp_err_print(err, __func__, __LINE__);
+    }
+
+    // Close
+    nvs_close(handle);
+    return ESP_OK;
+}
+
 void app_wifi_main(esp_event_loop_handle_t event_loop) {
     // Creat message queue and LED task
     ESP_LOGI(TAG, "start connect process");
@@ -1678,6 +1669,8 @@ void app_wifi_main(esp_event_loop_handle_t event_loop) {
     wifi_event_init();
     nvs_init();
     if (!nvs_read_wifichecked()) {
+        blufi_start(event_loop);
+#if 0
         BLUFI_INFO("w/o WiFi configuration in NVS. run blufi");
         blufi_check_connect();
         BLUFI_INFO("connected to AP");
@@ -1691,6 +1684,7 @@ void app_wifi_main(esp_event_loop_handle_t event_loop) {
         vTaskDelay(5000 / portTICK_PERIOD_MS);
         BLUFI_WARNING("reboot");
         esp_restart();
+#endif
     } else {
         ESP_LOGI(TAG, "load lid token from nvs");
         nvs_read_lid_token();

@@ -7,12 +7,13 @@ set(
   "app_weight.c" 
   "app_led.c"
   "app_key.c"
-  "timer_tick.c" 
   "app_httpd.c" 
   "app_httpc.c" 
   "app_scale.c" 
+  "blufi.c"
   "blufi_security.c" 
   "board_driver.c"
+  "timer_tick.c"
 )
 set(
   COMPONENT_ADD_INCLUDEDIRS 

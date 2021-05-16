@@ -32,6 +32,8 @@ extern "C" {
 
 #include "esp_event_loop.h"
 
+esp_err_t nvs_set_wifi_val(void);    // TODO: move to task_nvs
+esp_err_t nvs_write_lid_token(void); // TODO: move to task_nvs
 void app_wifi_main(esp_event_loop_handle_t event_loop);
 
 #ifdef __cplusplus

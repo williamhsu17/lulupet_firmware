@@ -224,6 +224,15 @@ extern "C" {
 #define FUNC_ERASE_NVS_BOOTUP                                                  \
     0 // 1: nvs will be earesd during bootup for debugging blufi process
 
+// URL
+#define SERVER_URL "lulupet.williamhsu.com.tw"
+#define HTTP_PHOTO_URL "http://lulupet.williamhsu.com.tw/imageHelper/"
+#define HTTPS_PHOTO_URL "https://lulupet.williamhsu.com.tw/imageHelper/"
+#define HTTP_RAW_URL "http://lulupet.williamhsu.com.tw/rawdata"
+#define HTTPS_ENABLE_URL "https://lulupet.williamhsu.com.tw/litter/enable/"
+#define HTTP_ENABLE_URL "http://lulupet.williamhsu.com.tw/litter/enable/"
+#define MAX_HTTP_RECV_BUFFER 512
+
 #ifdef __cplusplus
 }
 #endif
