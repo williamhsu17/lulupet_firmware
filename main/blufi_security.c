@@ -19,7 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "blufi_example.h"
+#include "include/blufi.h"
 #include "esp_blufi_api.h"
 #include "esp_bt_defs.h"
 #include "esp_bt_main.h"
