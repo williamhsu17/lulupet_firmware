@@ -84,8 +84,8 @@ static uint8_t gl_sta_bssid[6];
 static uint8_t gl_sta_ssid[32];
 static int gl_sta_ssid_len;
 /* lulupet API id and token */
-static char lulupet_lid_get[20];
-static char lulupet_token_get[180];
+static char lulupet_lid_get[NVS_LULUPET_LID_LEN];
+static char lulupet_token_get[NVS_LULUPET_TOKEN_LEN];
 static wifi_config_t sta_config;
 static wifi_config_t ap_config;
 static uint8_t server_if;
@@ -668,9 +668,10 @@ void blufi_start(esp_event_loop_handle_t event_loop) {
     vTaskDelay(500 / portTICK_PERIOD_MS);
     BLUFI_INFO("enable lid and token");
     http_get_enable();
-    nvs_write_lid_token();
+    nvs_write_lid_token(&lulupet_lid_get[0],
+                        &lulupet_token_get[0]); // TODO: error handling
     BLUFI_INFO("store WiFi setting to NVS");
-    nvs_set_wifi_val();
+    nvs_write_wifi_val(1, &sta_config); // TODO: error handling
     blufi_set_led_cmd(LED_ALL_OFF);
     vTaskDelay(5000 / portTICK_PERIOD_MS);
     BLUFI_WARNING("reboot");

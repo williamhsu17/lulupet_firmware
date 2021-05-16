@@ -1,11 +1,8 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/time.h>
-#include <time.h>
 #include "app_wifi.h"
+#include "cJSON.h"
 #include "esp_attr.h"
 #include "esp_camera.h"
+#include "esp_err.h"
 #include "esp_event.h"
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
@@ -13,8 +10,6 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
-#include "esp_err.h"
-#include "cJSON.h"
 #include "fb_gfx.h"
 #include "img_converters.h"
 #include "lwip/apps/sntp.h"
@@ -23,6 +18,11 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "sdkconfig.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/time.h>
+#include <time.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
@@ -30,12 +30,13 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
-#include "include/util.h"
-#include "include/event.h"
-#include "include/blufi.h"
 #include "include/app_key.h"
 #include "include/app_led.h"
+#include "include/app_wifi.h"
+#include "include/blufi.h"
 #include "include/board_driver.h"
+#include "include/event.h"
+#include "include/util.h"
 
 #define TAG "app_wifi"
 
@@ -71,8 +72,8 @@ static const int WIFI_CONNECTED_BIT = BIT0;
 /* lulupet API id and token */
 static char lulupet_lid[10] = "lid118";
 static char lulupet_token[10] = "WebLid118";
-static char lulupet_lid_get[20];
-static char lulupet_token_get[180];
+static char lulupet_lid_get[NVS_LULUPET_LID_LEN];
+static char lulupet_token_get[NVS_LULUPET_TOKEN_LEN];
 static task_connect_cb_t task_conn_cb;
 
 static esp_err_t esp_err_print(esp_err_t err, const char *func, uint32_t line);
@@ -84,8 +85,8 @@ static void wifi_check_connect(uint32_t wait_ms, uint8_t retry);
 static bool wifi_event_check_conn(uint32_t wait_ms);
 static esp_err_t wifi_event_handler(void *ctx, system_event_t *event);
 static void set_led_cmd(unsigned int led_cmd_load);
-static void obtain_time(void);
-static void initialize_sntp(void);
+static void sntp_obtain_time(void);
+static void sntp_check(void);
 static void check_time_sntp(void);
 static void app_httpc_main(void);
 static void http_post_task(void *pvParameter);
@@ -93,8 +94,6 @@ static void http_post_data(void);
 
 static esp_err_t nvs_init(void);
 static int32_t nvs_read_wifichecked(void);
-static esp_err_t nvs_write_wifi_val(int32_t set_value,
-                                    wifi_config_t *wifi_config);
 static esp_err_t nvs_reset_wifi_val(void);
 static esp_err_t nvs_read_lid_token(void);
 static esp_err_t nvs_read_wifi_config(void);
@@ -456,33 +455,6 @@ static esp_err_t nvs_init(void) {
     return err;
 }
 
-static esp_err_t nvs_write_wifi_val(int32_t set_value,
-                                    wifi_config_t *wifi_config) {
-    nvs_handle_t handle;
-    esp_err_t err;
-
-    // Open
-    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
-    if (err != ESP_OK) {
-        return esp_err_print(err, __func__, __LINE__);
-    }
-
-    // Write
-    ESP_ERROR_CHECK(nvs_set_i32(handle, NVSWIFICHECK, set_value));
-    ESP_ERROR_CHECK(nvs_set_blob(handle, NVSWIFISETTING, wifi_config,
-                                 sizeof(wifi_config_t)));
-
-    // Commit
-    err = nvs_commit(handle);
-    if (err != ESP_OK) {
-        return esp_err_print(err, __func__, __LINE__);
-    }
-
-    // Close
-    nvs_close(handle);
-    return ESP_OK;
-}
-
 static esp_err_t nvs_reset_wifi_val(void) {
     ESP_LOGI(TAG, "%s:L%d", __func__, __LINE__);
     wifi_config_t wifi_config = {};
@@ -502,10 +474,15 @@ static esp_err_t nvs_read_lid_token(void) {
 
     // Read
     len = sizeof(lulupet_lid_get);
-    ESP_ERROR_CHECK(nvs_get_blob(handle, NVSAPPLID, &lulupet_lid_get, &len));
+    err = nvs_get_blob(handle, NVSAPPLID, &lulupet_lid_get[0], &len);
+    if (err != ESP_OK) {
+        return esp_err_print(err, __func__, __LINE__);
+    }
     len = sizeof(lulupet_token_get);
-    ESP_ERROR_CHECK(
-        nvs_get_blob(handle, NVSAPPTOKEN, &lulupet_token_get, &len));
+    err = nvs_get_blob(handle, NVSAPPTOKEN, &lulupet_token_get, &len);
+    if (err != ESP_OK) {
+        return esp_err_print(err, __func__, __LINE__);
+    }
     ESP_LOGI(TAG, "nvs lid   : %s", lulupet_lid_get);
     ESP_LOGI(TAG, "nvs token : %s", lulupet_token_get);
 
@@ -527,7 +504,11 @@ static esp_err_t nvs_read_wifi_config(void) {
     }
 
     // Read
-    ESP_ERROR_CHECK(nvs_get_blob(handle, NVSWIFISETTING, &sta_config, &len));
+    err = nvs_get_blob(handle, NVSWIFISETTING, &sta_config, &len);
+    if (err != ESP_OK) {
+        return esp_err_print(err, __func__, __LINE__);
+    }
+
     ESP_LOGI(TAG, "nvs read WiFi configure ssid:%s passwd:%s",
              sta_config.sta.ssid, sta_config.sta.password);
     // Close
@@ -656,7 +637,7 @@ static void check_time_sntp(void) {
         ESP_LOGI(TAG,
                  "Time is not set yet. Connecting to WiFi and getting time "
                  "over NTP.");
-        obtain_time();
+        sntp_obtain_time();
         // update 'now' variable with current time
         time(&now);
     }
@@ -674,30 +655,28 @@ static void check_time_sntp(void) {
     ESP_LOGI(TAG, "Seconds since January 1, 1970 = %ld", seconds);
 }
 
-static void obtain_time(void) {
-    // ESP_ERROR_CHECK( nvs_flash_init() );
-    xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true,
-                        portMAX_DELAY);
-    initialize_sntp();
-
-    // wait for time to be set
+static void sntp_obtain_time(void) {
     time_t now = 0;
     struct tm timeinfo = {0};
     int retry = 0;
     const int retry_count = 10;
+
+    xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true,
+                        portMAX_DELAY);
+    sntp_check();
+
+    // wait for time to be set
     while (timeinfo.tm_year < (2020 - 1900) && ++retry < retry_count) {
-        BLUFI_INFO("Waiting for system time to be set... (%d/%d)", retry,
-                   retry_count);
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
+        ESP_LOGI(TAG, "waiting for system time to be set... (%d/%d)", retry,
+                 retry_count);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
         time(&now);
         localtime_r(&now, &timeinfo);
     }
-
-    // ESP_ERROR_CHECK( esp_wifi_stop() );
 }
 
-static void initialize_sntp(void) {
-    BLUFI_INFO("Initializing SNTP");
+static void sntp_check(void) {
+    ESP_LOGI(TAG, "init SNTP");
     sntp_setoperatingmode(SNTP_OPMODE_POLL);
     sntp_setservername(0, "pool.ntp.org");
     sntp_init();
@@ -705,13 +684,13 @@ static void initialize_sntp(void) {
 
 static void app_httpc_main(void) {
     ESP_LOGI(TAG, "start");
-    xTaskCreate(&http_post_task, "http_post_task", 3072, NULL, 5, NULL);
+    xTaskCreate(&http_post_task, "http_post_task", 4096, NULL, 5, NULL);
 }
 
 static void http_post_task(void *pvParameter) {
     int i = 0;
 
-    while (i < 300) {
+    while (i < 1) {
         ESP_LOGI(TAG, "Checking WiFi status");
         xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true,
                             portMAX_DELAY);
@@ -1054,12 +1033,7 @@ static void service_connect_event_handler(void *arg, esp_event_base_t base,
     }
 }
 
-esp_err_t nvs_set_wifi_val(void) {
-    ESP_LOGI(TAG, "%s:L%d", __func__, __LINE__);
-    return nvs_write_wifi_val(1, &sta_config);
-}
-
-esp_err_t nvs_write_lid_token(void) {
+esp_err_t nvs_write_wifi_val(int32_t set_value, wifi_config_t *wifi_config) {
     nvs_handle_t handle;
     esp_err_t err;
 
@@ -1070,10 +1044,55 @@ esp_err_t nvs_write_lid_token(void) {
     }
 
     // Write
-    ESP_ERROR_CHECK(nvs_set_blob(handle, NVSAPPLID, &lulupet_lid_get,
-                                 sizeof(lulupet_lid_get)));
-    ESP_ERROR_CHECK(nvs_set_blob(handle, NVSAPPTOKEN, &lulupet_token_get,
-                                 sizeof(lulupet_token_get)));
+    ESP_LOGI(TAG, "save set_value: %d into nvs", set_value);
+    err = nvs_set_i32(handle, NVSWIFICHECK, set_value);
+    if (err != ESP_OK) {
+        return esp_err_print(err, __func__, __LINE__);
+    }
+    ESP_LOGI(TAG, "save wifi_config into nvs");
+    err = nvs_set_blob(handle, NVSWIFISETTING, wifi_config,
+                       sizeof(wifi_config_t));
+    if (err != ESP_OK) {
+        return esp_err_print(err, __func__, __LINE__);
+    }
+
+    // Commit
+    err = nvs_commit(handle);
+    if (err != ESP_OK) {
+        return esp_err_print(err, __func__, __LINE__);
+    }
+
+    // Close
+    nvs_close(handle);
+    return ESP_OK;
+}
+
+esp_err_t nvs_write_lid_token(char *lid, char *token) {
+    nvs_handle_t handle;
+    esp_err_t err;
+
+    if (lid == NULL || token == NULL) {
+        esp_err_print(ESP_ERR_INVALID_ARG, __func__, __LINE__);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    // Open
+    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) {
+        return esp_err_print(err, __func__, __LINE__);
+    }
+
+    // Write
+    ESP_LOGI(TAG, "save lid: %s into nvs", lid);
+    err = nvs_set_blob(handle, NVSAPPLID, lid, sizeof(lulupet_lid_get));
+    if (err != ESP_OK) {
+        return esp_err_print(err, __func__, __LINE__);
+    }
+    ESP_LOGI(TAG, "save token: %s into nvs", token);
+    err = nvs_set_blob(handle, NVSAPPTOKEN, token, sizeof(lulupet_token_get));
+    if (err != ESP_OK) {
+        return esp_err_print(err, __func__, __LINE__);
+    }
     // Commit
     err = nvs_commit(handle);
     if (err != ESP_OK) {
@@ -1099,9 +1118,9 @@ void app_wifi_main(esp_event_loop_handle_t event_loop) {
         blufi_start(event_loop);
     } else {
         ESP_LOGI(TAG, "load lid token from nvs");
-        nvs_read_lid_token();
+        nvs_read_lid_token(); // TODO: error handling
         ESP_LOGI(TAG, "load WiFi Setting from nvs");
-        nvs_read_wifi_config();
+        nvs_read_wifi_config(); // TODO: error handling
         wifi_init_from_nvs();
         set_led_cmd(LED_GREEN_1HZ);
         wifi_check_connect(WIFI_CONN_CHK_MS, WIFI_CONN_RETRY);
@@ -1109,7 +1128,7 @@ void app_wifi_main(esp_event_loop_handle_t event_loop) {
         ESP_LOGI(TAG, "connected to AP");
         check_time_sntp();
         ESP_LOGI(TAG, "Update time from SNTP");
-        vTaskDelay(30000 / portTICK_PERIOD_MS);
+        // vTaskDelay(30000 / portTICK_PERIOD_MS);
     }
 
     app_httpc_main();

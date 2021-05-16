@@ -31,13 +31,19 @@ extern "C" {
 #endif
 
 #include "esp_event_loop.h"
+#include "esp_wifi_types.h"
 
-esp_err_t nvs_set_wifi_val(void);    // TODO: move to task_nvs
-esp_err_t nvs_write_lid_token(void); // TODO: move to task_nvs
+#define NVS_LULUPET_LID_LEN 20
+#define NVS_LULUPET_TOKEN_LEN 180
+
+esp_err_t
+nvs_write_wifi_val(int32_t set_value,
+                   wifi_config_t *wifi_config);        // TODO: move to task_nvs
+esp_err_t nvs_write_lid_token(char *lid, char *token); // TODO: move to task_nvs
 void app_wifi_main(esp_event_loop_handle_t event_loop);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif
+#endif // _APP_WIFI_H_
