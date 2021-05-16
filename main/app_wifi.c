@@ -102,6 +102,8 @@ static esp_err_t nvs_reset_wifi_val(void);
 static esp_err_t nvs_read_lid_token(void);
 static esp_err_t nvs_read_wifi_config(void);
 
+static void camera_take_photo(camera_fb_t **fb);
+
 // unused code
 #if 0
 #define EXAMPLE_WIFI_SSID "SlingXCorp"
@@ -113,297 +115,8 @@ extern const char howsmyssl_com_root_cert_pem_start[] asm(
 extern const char howsmyssl_com_root_cert_pem_end[] asm(
     "_binary_lulupet_com_root_cert_pem_end");
 
-static void capture_photo_only(void);
-static void http_post_rawdata(void);
-static void http_post_photo(void);
 static void initialise_test_wifi(void);
 static esp_err_t read_wifi_nvs(void);
-
-static void capture_photo_only(void) {
-
-    ESP_LOGI(TAG, "Free Heap Internal is:  %d Byte",
-             heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-    ESP_LOGI(TAG, "Free Heap PSRAM    is:  %d Byte",
-             heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-
-    // Camera capture to fb
-    camera_fb_t *fb = NULL;
-
-    fb = esp_camera_fb_get();
-    if (!fb) {
-        ESP_LOGE(TAG, "Camera capture failed");
-        esp_camera_fb_return(fb);
-        ESP_LOGE(TAG, "Resolve Camera problem, reboot system");
-        while (1) {
-            // Nothing
-        }
-        return;
-    }
-    ESP_LOGI(TAG, "Camera capture ok");
-
-    if (fb->format == PIXFORMAT_JPEG) {
-        ESP_LOGI(TAG, "Camera capture JPEG");
-    } else {
-        ESP_LOGI(TAG, "Camera capture RAW");
-    }
-
-    esp_camera_fb_return(fb);
-
-    return;
-}
-
-static void http_post_rawdata(void) {
-    
-    // xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true,
-    // portMAX_DELAY);
-
-    esp_err_t err;
-
-    esp_http_client_config_t config = {
-        .host = SERVER_URL,
-        .path = "/rawdata",
-        .event_handler = http_event_handler,
-    };
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-
-    ESP_LOGI(TAG, "http post raw data");
-
-    // read adc value
-    unsigned int *sensor_adc = (unsigned int *)malloc(sizeof(unsigned int));
-#if DUMMY_SENSOR
-    *sensor_adc = 999;
-#else
-    i2c_mcp3221_readADC(I2C_MASTER_NUM, sensor_adc);
-#endif
-
-// read PIR
-#if DUMMY_SENSOR
-    int sensor_pir = 1;
-#else
-    int sensor_pir = gpio_get_level(GPIO_INPUT_PIR);
-#endif
-
-    // read unix timestamp
-    time_t seconds;
-    seconds = time(NULL);
-
-    // const char *post_data =
-    // "lid=lid118&token=WebLid118&weight=100&pir=1&pic=http%3A%2F%2Fwww.google.com&tt=1603191727";
-    char *post_data = malloc(200);
-    sprintf(post_data, "lid=%s&token=%s&weight=%d&pir=%d&pic=%s&tt=%ld",
-            lulupet_lid, lulupet_token, *sensor_adc, sensor_pir, urlbuffer,
-            seconds);
-    ESP_LOGI(TAG, "post data:\r\n%s", post_data);
-
-    esp_http_client_set_url(client, "http://lulupet.williamhsu.com.tw/rawdata");
-    esp_http_client_set_method(client, HTTP_METHOD_POST);
-    esp_http_client_set_header(client, "accept", "application/json");
-    esp_http_client_set_header(client, "Content-Type",
-                               "application/x-www-form-urlencoded");
-    esp_http_client_set_header(
-        client, "X-CSRFToken",
-        "eA8ob2RLGxH6sQ7njh6pokrwNNTxR7gDqpfhPY9VyO8M9B8HZIaMFrKClihBLO39");
-    if ((err = esp_http_client_open(client, strlen(post_data))) != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to open HTTP connection: %s",
-                 esp_err_to_name(err));
-        esp_http_client_cleanup(client);
-        return;
-    }
-    int wlen = esp_http_client_write(client, post_data, strlen(post_data));
-    if (wlen < 0) {
-        ESP_LOGE(TAG, "Write failed");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        return;
-    }
-    ESP_LOGI(TAG, "http client write, length =%d", wlen);
-    int content_length = esp_http_client_fetch_headers(client);
-    if (content_length < 0) {
-        ESP_LOGE(TAG, "Failed to fetch header");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        return;
-    }
-    ESP_LOGI(TAG, "http client fetech, length =%d", content_length);
-    int total_read_len = 0, read_len;
-    char *buffer = malloc(MAX_HTTP_RECV_BUFFER + 1);
-    if (total_read_len < content_length &&
-        content_length <= MAX_HTTP_RECV_BUFFER) {
-        read_len = esp_http_client_read(client, buffer, content_length);
-        if (read_len <= 0) {
-            ESP_LOGE(TAG, "Error read data");
-        }
-        ESP_LOGI(TAG, "http client read:%s", buffer);
-        buffer[read_len] = 0;
-        ESP_LOGI(TAG, "read_len = %d", read_len);
-    }
-
-    free(sensor_adc);
-    esp_http_client_close(client);
-    ESP_LOGI(TAG, "http client close");
-
-    esp_http_client_cleanup(client);
-    ESP_LOGI(TAG, "http client cleanup");
-}
-
-static void http_post_photo(void) {
-    // Camera capture to fb
-    camera_fb_t *fb = NULL;
-
-    fb = esp_camera_fb_get();
-    if (!fb) {
-        ESP_LOGE(TAG, "Camera capture failed");
-        return;
-    }
-    ESP_LOGI(TAG, "Camera capture ok");
-
-    size_t fb_len = 0;
-    if (fb->format == PIXFORMAT_JPEG) {
-        fb_len = fb->len;
-        ESP_LOGI(TAG, "Camera capture JPEG");
-    } else {
-        ESP_LOGI(TAG, "Camera capture RAW");
-    }
-
-    // HTTP HEAD process
-    int fileSize = fb_len;
-    // char contentType[80];
-    char *contentType = malloc(80);
-    strcpy(
-        contentType,
-        "multipart/form-data; boundary=----WebKitFormBoundarykqaGaA5tlVdQyckh");
-    // char boundary[50] = "----WebKitFormBoundarykqaGaA5tlVdQyckh";
-    char *boundary = malloc(50);
-    strcpy(boundary, "----WebKitFormBoundarykqaGaA5tlVdQyckh");
-    // char payloadHeader[200] = {0};
-    char *payloadHeader = malloc(200);
-    sprintf(payloadHeader,
-            "--%s\r\nContent-Disposition: form-data; name=\"image\"; "
-            "filename=\"%s\"\r\nContent-Type: image/jpeg\r\n\r\n",
-            boundary, "victor-test.jpg");
-
-    // char payloadFooter[50] = {0};
-    char *payloadFooter = malloc(50);
-    sprintf(payloadFooter, "\r\n--%s--\r\n", boundary);
-
-    int headLength = strlen(payloadHeader);
-    int footerLength = strlen(payloadFooter);
-    int contentLength = headLength + fileSize + footerLength;
-    ESP_LOGI(TAG, "payloadHeader length =%d", headLength);
-    ESP_LOGI(TAG, "picture length =%d", fileSize);
-    ESP_LOGI(TAG, "payloadFooter length =%d", footerLength);
-    ESP_LOGI(TAG, "contentLength length =%d", contentLength);
-    // char payloadLength[10] = {0};
-    char *payloadLength = malloc(10);
-    sprintf(payloadLength, "%d", contentLength);
-    ESP_LOGI(TAG, "payloadLength length =%s", payloadLength);
-    ESP_LOGI(TAG, "payloadHeader:\r\n%s", payloadHeader);
-    ESP_LOGI(TAG, "payloadFooter:\r\n%s", payloadFooter);
-
-    // HTTP process
-    esp_http_client_config_t config = {
-        .url = HTTP_PHOTO_URL,
-        .event_handler = http_event_handler,
-    };
-
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    ESP_LOGI(TAG, "http client init");
-
-    // esp_http_client_open -> esp_http_client_write ->
-    // esp_http_client_fetch_headers -> esp_http_client_read (and option)
-    // esp_http_client_close.
-    esp_http_client_set_header(client, "Host", SERVER_URL);
-    esp_http_client_set_header(client, "Accept", "application/json");
-    esp_http_client_set_header(client, "Connection", "close");
-    esp_http_client_set_header(client, "Content-Type", contentType);
-    esp_http_client_set_header(client, "Content-Length", payloadLength);
-    esp_http_client_set_url(client, config.url);
-    esp_http_client_set_method(client, HTTP_METHOD_POST);
-    esp_err_t err;
-    if ((err = esp_http_client_open(client, contentLength)) != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to open HTTP connection: %s",
-                 esp_err_to_name(err));
-        esp_http_client_cleanup(client);
-        return;
-    }
-    ESP_LOGI(TAG, "http client open");
-    int writeres;
-    writeres =
-        esp_http_client_write(client, payloadHeader, strlen(payloadHeader));
-    if (writeres < 0) {
-        ESP_LOGE(TAG, "Write failed");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        return;
-    }
-    ESP_LOGI(TAG, "http client write, length =%d", writeres);
-    writeres = esp_http_client_write(client, (const char *)fb->buf, (fb->len));
-    if (writeres < 0) {
-        ESP_LOGE(TAG, "Write failed");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        return;
-    }
-    ESP_LOGI(TAG, "http client write, length =%d", writeres);
-    writeres =
-        esp_http_client_write(client, payloadFooter, strlen(payloadFooter));
-    if (writeres < 0) {
-        ESP_LOGE(TAG, "Write failed");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        return;
-    }
-    ESP_LOGI(TAG, "http client write, length =%d", writeres);
-
-    int content_length = esp_http_client_fetch_headers(client);
-    if (content_length < 0) {
-        ESP_LOGE(TAG, "Failed to fetch header");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        return;
-    }
-    ESP_LOGI(TAG, "http client fetech, length =%d", content_length);
-    int total_read_len = 0, read_len;
-    // char *buffer = malloc(MAX_HTTP_RECV_BUFFER + 1);
-    char *buffer = malloc(MAX_HTTP_RECV_BUFFER + 1);
-    if (total_read_len < content_length &&
-        content_length <= MAX_HTTP_RECV_BUFFER) {
-        read_len = esp_http_client_read(client, buffer, content_length);
-        if (read_len <= 0) {
-            ESP_LOGE(TAG, "Error read data");
-        }
-        ESP_LOGI(TAG, "http client read:%s", buffer);
-        ESP_LOGI(TAG, "read_len = %d", read_len);
-
-        cJSON *pJsonRoot = cJSON_Parse(buffer);
-        if (NULL != pJsonRoot) {
-            cJSON *pImage = cJSON_GetObjectItem(pJsonRoot, "image");
-            if (NULL != pImage) {
-                cJSON *pURL = cJSON_GetObjectItem(pImage, "url");
-                if (NULL != pURL) {
-                    if (cJSON_IsString(pURL)) {
-                        sprintf(urlbuffer, "%s", pURL->valuestring);
-                        // ESP_LOGI(TAG, "get url:%s", pURL->valuestring);
-                        ESP_LOGI(TAG, "read url:%s", urlbuffer);
-                    } else
-                        ESP_LOGI(TAG, "url is not string");
-                } else
-                    ESP_LOGI(TAG, "get object url fail");
-            } else
-                ESP_LOGI(TAG, "get object image fail");
-        } else
-            ESP_LOGI(TAG, "json parse fail");
-
-        buffer[read_len] = 0;
-    }
-    free(buffer);
-    esp_http_client_close(client);
-    ESP_LOGI(TAG, "http client close");
-    esp_http_client_cleanup(client);
-    ESP_LOGI(TAG, "http client cleanup");
-
-    esp_camera_fb_return(fb);
-}
 
 static void initialise_test_wifi(void) {
     ESP_ERROR_CHECK(nvs_flash_erase());
@@ -718,216 +431,229 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
     return ESP_OK;
 }
 
-static void http_post_data(void) {
+static void camera_take_photo(camera_fb_t **fb) {
+    *fb = esp_camera_fb_get();
 
-    ESP_LOGI(TAG, "Free Heap Internal is:  %d Byte",
-             heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-    ESP_LOGI(TAG, "Free Heap PSRAM    is:  %d Byte",
-             heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-
-    esp_err_t err;
-
-    // Camera capture to fb
-    camera_fb_t *fb = NULL;
-
-    fb = esp_camera_fb_get();
     if (!fb) {
-        ESP_LOGE(TAG, "Camera capture failed");
-        esp_camera_fb_return(fb);
-        ESP_LOGE(TAG, "Resolve Camera problem, reboot system");
+        ESP_LOGE(TAG, "camera take photo failed");
+        esp_camera_fb_return(*fb);
+        ESP_LOGE(
+            TAG,
+            "resolve camera problem, reboot system"); // TODO: record into log
         while (1) {
             vTaskDelay(pdMS_TO_TICKS(1000));
         }
         esp_restart();
         return;
     }
-    ESP_LOGI(TAG, "Camera capture ok");
+    ESP_LOGI(TAG, "camera take photo ok");
+}
 
-    size_t fb_len = 0;
-    if (fb->format == PIXFORMAT_JPEG) {
-        fb_len = fb->len;
-        ESP_LOGI(TAG, "Camera capture JPEG");
-    } else {
-        ESP_LOGI(TAG, "Camera capture RAW");
+static void http_post_photo(esp_http_client_handle_t client, char *json_url_val,
+                            int json_url_val_len, time_t *timestamp) {
+
+#define HTTP_PAYLOAD_HEADER_LEN 200
+#define HTTP_PAYLOAD_FOOTER_LEN 50
+#define HTTP_PAYLOAD_LENGTH_LEN 10
+#define HTTP_PAYLOAD_HEADER_FILENAME "lulupet-cat.jpg"
+
+    bool client_open = false;
+    int client_rd_len;
+    char *payload_header = NULL;
+    char *payload_footer = NULL;
+    char *payload_length = NULL;
+    char *json_str = NULL;
+    cJSON *json_root = NULL;
+    camera_fb_t *fb = NULL;
+    esp_err_t err;
+
+    if (json_url_val == NULL) {
+        esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
+        return;
     }
 
     // read unix timestamp
-    time_t seconds;
-    seconds = time(NULL);
-
-    // HTTP HEAD process
-    int fileSize = fb_len;
-    const char *contentType =
+    *timestamp = time(NULL);
+    camera_take_photo(&fb);
+    ESP_LOGW(TAG, "L%d", __LINE__);
+    if (fb->format != PIXFORMAT_JPEG) {
+        ESP_LOGE(TAG, "camera use the %d format", fb->format);
+        return;
+    }
+    ESP_LOGW(TAG, "L%d", __LINE__);
+    // HTTP HEAD
+    const char *content_type =
         "multipart/form-data; boundary=----WebKitFormBoundarykqaGaA5tlVdQyckh";
+    ESP_LOGW(TAG, "L%d", __LINE__);
     const char *boundary = "----WebKitFormBoundarykqaGaA5tlVdQyckh";
-    char *payloadHeader = malloc(200);
-    sprintf(payloadHeader,
-            "--%s\r\nContent-Disposition: form-data; name=\"image\"; "
-            "filename=\"%s\"\r\nContent-Type: image/jpeg\r\n\r\n",
-            boundary, "victor-test.jpg");
-    char *payloadFooter = malloc(50);
-    sprintf(payloadFooter, "\r\n--%s--\r\n", boundary);
-
-    int headLength = strlen(payloadHeader);
-    int footerLength = strlen(payloadFooter);
-    int contentLength = headLength + fileSize + footerLength;
-    ESP_LOGI(TAG, "payloadHeader length: %d", headLength);
-    ESP_LOGI(TAG, "picture length: %d", fileSize);
-    ESP_LOGI(TAG, "payloadFooter length: %d", footerLength);
-    ESP_LOGI(TAG, "contentLength length: %d", contentLength);
-    char *payloadLength = malloc(5);
-    sprintf(payloadLength, "%d", contentLength);
-    ESP_LOGI(TAG, "payloadLength length =%s", payloadLength);
-    ESP_LOGI(TAG, "payloadHeader:\n%s", payloadHeader);
-    ESP_LOGI(TAG, "payloadFooter:\n%s", payloadFooter);
-
-    // HTTP process
-    esp_http_client_config_t config = {
-        .url = HTTP_PHOTO_URL,
-        .event_handler = http_event_handler,
-    };
-
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    ESP_LOGI(TAG, "http client init");
-
+    ESP_LOGW(TAG, "L%d", __LINE__);
+    payload_header = calloc(HTTP_PAYLOAD_HEADER_LEN, sizeof(char));
+    if (payload_header == NULL) {
+        esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
+        goto http_post_photo_end;
+    }
+    snprintf(payload_header, HTTP_PAYLOAD_HEADER_LEN,
+             "--%s\r\nContent-Disposition: form-data; name=\"image\"; "
+             "filename=\"%s\"\r\nContent-Type: image/jpeg\r\n\r\n",
+             boundary, HTTP_PAYLOAD_HEADER_FILENAME);
+    ESP_LOGW(TAG, "L%d", __LINE__);
+    payload_footer = calloc(HTTP_PAYLOAD_FOOTER_LEN, sizeof(char));
+    if (payload_footer == NULL) {
+        esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
+        goto http_post_photo_end;
+    }
+    snprintf(payload_footer, HTTP_PAYLOAD_FOOTER_LEN, "\r\n--%s--\r\n",
+             boundary);
+    ESP_LOGW(TAG, "L%d", __LINE__);
+    int content_length =
+        strlen(payload_header) + fb->len + strlen(payload_footer);
+    payload_length = calloc(HTTP_PAYLOAD_LENGTH_LEN, sizeof(char));
+    if (payload_length == NULL) {
+        esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
+        goto http_post_photo_end;
+    }
+    snprintf(payload_length, HTTP_PAYLOAD_LENGTH_LEN, "%d", content_length);
+    ESP_LOGW(TAG, "L%d", __LINE__);
+    ESP_LOGI(TAG, "payloadLength:\n%s", payload_length);
+    ESP_LOGI(TAG, "payloadHeader:\n%s", payload_header);
+    ESP_LOGI(TAG, "payloadFooter:\n%s", payload_footer);
+    ESP_LOGW(TAG, "L%d", __LINE__);
     // esp_http_client_open -> esp_http_client_write ->
     // esp_http_client_fetch_headers -> esp_http_client_read (and option)
     // esp_http_client_close.
     esp_http_client_set_header(client, "Host", SERVER_URL);
     esp_http_client_set_header(client, "Accept", "application/json");
     esp_http_client_set_header(client, "Connection", "close");
-    esp_http_client_set_header(client, "Content-Type", contentType);
-    esp_http_client_set_header(client, "Content-Length", payloadLength);
-    esp_http_client_set_url(client, config.url);
+    esp_http_client_set_header(client, "Content-Type", content_type);
+    esp_http_client_set_header(client, "Content-Length", payload_length);
+    esp_http_client_set_url(client, HTTP_PHOTO_URL);
     esp_http_client_set_method(client, HTTP_METHOD_POST);
 
-    if ((err = esp_http_client_open(client, contentLength)) != ESP_OK) {
-        ESP_LOGE(TAG, "failed to open HTTP connection: %s",
-                 esp_err_to_name(err));
-        esp_http_client_cleanup(client);
-        esp_camera_fb_return(fb);
-        free(payloadHeader);
-        free(payloadFooter);
-        free(payloadLength);
-        return;
+    if ((err = esp_http_client_open(client, content_length)) != ESP_OK) {
+        esp_err_print(err, __func__, __LINE__);
+        goto http_post_photo_end;
     }
+    client_open = true;
     ESP_LOGI(TAG, "http client open");
-    int writeres;
-    writeres =
-        esp_http_client_write(client, payloadHeader, strlen(payloadHeader));
-    if (writeres < 0) {
-        ESP_LOGE(TAG, "Write failed");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
+
+    if ((client_rd_len = esp_http_client_write(client, payload_header,
+                                               strlen(payload_header))) < 0) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto http_post_photo_end;
+    }
+    ESP_LOGI(TAG, "http client write header, length: %d", client_rd_len);
+
+    if ((client_rd_len = esp_http_client_write(client, (const char *)fb->buf,
+                                               (fb->len))) < 0) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto http_post_photo_end;
+    }
+    ESP_LOGI(TAG, "http client write playload, length: %d", client_rd_len);
+
+    if ((client_rd_len = esp_http_client_write(client, payload_footer,
+                                               strlen(payload_footer))) < 0) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto http_post_photo_end;
+    }
+    ESP_LOGI(TAG, "http client write footer, length: %d", client_rd_len);
+
+    // fetch json string example:
+    // {"msg": "Upload Success", "result": "Success", "image": {"name":
+    // "victor-test.jpg", "size": 31285, "content_type": "image/jpeg", "url":
+    // "http://lulupet.williamhsu.com.tw/media/7881a26566c74127b8e97a2632596d32.jpg"}}
+    if ((content_length = esp_http_client_fetch_headers(client)) < 0) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto http_post_photo_end;
+    }
+    ESP_LOGI(TAG, "http client fetech header, length =%d", content_length);
+
+    int read_len;
+    json_str = calloc(MAX_HTTP_RECV_BUFFER + 1, sizeof(char));
+    if (json_str == NULL) {
+        esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
+        goto http_post_photo_end;
+    }
+
+    if (content_length > MAX_HTTP_RECV_BUFFER) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto http_post_photo_end;
+    }
+
+    // TODO: use while loop to read data with retry
+    if ((read_len = esp_http_client_read(client, json_str, content_length)) <=
+        0) {
+        ESP_LOGE(TAG, "Error read data");
+    }
+    ESP_LOGI(TAG, "read_len: %d", read_len);
+    ESP_LOGI(TAG, "http client read: %s", json_str);
+
+    json_root = cJSON_Parse(json_str);
+
+    if (json_root == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto http_post_photo_end;
+    }
+    cJSON *json_image_obj = cJSON_GetObjectItem(json_root, "image");
+    if (json_image_obj == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto http_post_photo_end;
+    }
+    cJSON *json_url_obj = cJSON_GetObjectItem(json_image_obj, "url");
+    if (json_url_obj == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto http_post_photo_end;
+    }
+
+    snprintf(json_url_val, json_url_val_len, "%s",
+             cJSON_GetStringValue(json_url_obj));
+    ESP_LOGI(TAG, "read url:%s", json_url_val);
+
+http_post_photo_end:
+    if (fb) {
         esp_camera_fb_return(fb);
-        free(payloadHeader);
-        free(payloadFooter);
-        free(payloadLength);
-        return;
     }
-    ESP_LOGI(TAG, "http client write, length: %d", writeres);
-    writeres = esp_http_client_write(client, (const char *)fb->buf, (fb->len));
-    if (writeres < 0) {
-        ESP_LOGE(TAG, "Write failed");
+    if (payload_header) {
+        free(payload_header);
+    }
+    if (payload_footer) {
+        free(payload_footer);
+    }
+    if (payload_length) {
+        free(payload_length);
+    }
+    if (json_str) {
+        free(json_str);
+    }
+    if (json_root) {
+        cJSON_Delete(json_root);
+    }
+    if (client_open) {
         esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        esp_camera_fb_return(fb);
-        free(payloadHeader);
-        free(payloadFooter);
-        free(payloadLength);
-        return;
+        ESP_LOGI(TAG, "http client close");
     }
-    ESP_LOGI(TAG, "http client write, length: %d", writeres);
-    writeres =
-        esp_http_client_write(client, payloadFooter, strlen(payloadFooter));
-    if (writeres < 0) {
-        ESP_LOGE(TAG, "Write failed");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        esp_camera_fb_return(fb);
-        free(payloadHeader);
-        free(payloadFooter);
-        free(payloadLength);
-        return;
+
+    return;
+}
+
+static void http_post_raw(esp_http_client_handle_t client, char *json_url_val,
+                          uint32_t weight, bool pir, time_t timestamp) {
+#define HTTP_POST_RAW_DATA_LEN 256
+
+    int client_wr_len;
+    int content_length;
+    esp_err_t err;
+    bool client_open = false;
+    char *json_str = NULL;
+    char *post_data_raw = calloc(HTTP_POST_RAW_DATA_LEN, sizeof(char));
+    if (post_data_raw == NULL) {
+        esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
+        goto http_post_raw_end;
     }
-    ESP_LOGI(TAG, "http client write, length =%d", writeres);
 
-    int content_length = esp_http_client_fetch_headers(client);
-    if (content_length < 0) {
-        ESP_LOGE(TAG, "Failed to fetch header");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        esp_camera_fb_return(fb);
-        free(payloadHeader);
-        free(payloadFooter);
-        free(payloadLength);
-        return;
-    }
-    ESP_LOGI(TAG, "http client fetech, length =%d", content_length);
-    int total_read_len = 0, read_len;
-    char *buffer = calloc(MAX_HTTP_RECV_BUFFER + 1, sizeof(char));
-    char *urlbuffer_get = malloc(100);
-    if (total_read_len < content_length &&
-        content_length <= MAX_HTTP_RECV_BUFFER) {
-        read_len = esp_http_client_read(client, buffer, content_length);
-        if (read_len <= 0) {
-            ESP_LOGE(TAG, "Error read data");
-        }
-        ESP_LOGI(TAG, "read_len: %d", read_len);
-        ESP_LOGI(TAG, "http client read: %s", buffer);
-
-        cJSON *pJsonRoot = cJSON_Parse(buffer);
-        if (NULL != pJsonRoot) {
-            cJSON *pImage = cJSON_GetObjectItem(pJsonRoot, "image");
-            if (NULL != pImage) {
-                cJSON *pURL = cJSON_GetObjectItem(pImage, "url");
-                if (NULL != pURL) {
-                    if (cJSON_IsString(pURL)) {
-                        sprintf(urlbuffer_get, "%s", pURL->valuestring);
-                        ESP_LOGI(TAG, "read url:%s", urlbuffer_get);
-                    } else
-                        ESP_LOGI(TAG, "url is not string");
-                } else
-                    ESP_LOGI(TAG, "get object url fail");
-            } else
-                ESP_LOGI(TAG, "get object image fail");
-        } else
-            ESP_LOGI(TAG, "json parse fail");
-
-        buffer[read_len] = 0;
-    }
-    esp_http_client_close(client);
-    ESP_LOGI(TAG, "http client close");
-
-    esp_camera_fb_return(fb);
-    free(payloadHeader);
-    free(payloadFooter);
-    free(payloadLength);
-    free(buffer);
-
-    vTaskDelay(pdMS_TO_TICKS(100));
-
-    // read adc value
-    unsigned int *sensor_adc = (unsigned int *)malloc(sizeof(unsigned int));
-#if DUMMY_SENSOR
-    *sensor_adc = 999;
-#else
-    // TODO: get sensor_adc from app_weight
-#endif
-
-// read PIR
-#if DUMMY_SENSOR
-    int sensor_pir = 1;
-#else
-    int sensor_pir = gpio_get_level(GPIO_INPUT_PIR);
-#endif
-
-    ESP_LOGI(TAG, "http post raw data");
-    char *post_data_raw = malloc(200);
-    sprintf(post_data_raw, "lid=%s&token=%s&weight=%d&pir=%d&pic=%s&tt=%ld",
-            lulupet_lid, lulupet_token, *sensor_adc, sensor_pir, urlbuffer_get,
-            seconds);
-    ESP_LOGI(TAG, "post data:\r\n%s", post_data_raw);
+    snprintf(post_data_raw, HTTP_POST_RAW_DATA_LEN,
+             "lid=%s&token=%s&weight=%u&pir=%d&pic=%s&tt=%ld", lulupet_lid,
+             lulupet_token, weight, pir, json_url_val, timestamp);
+    ESP_LOGI(TAG, "post data:\n%s", post_data_raw);
 
     esp_http_client_set_url(client, HTTP_RAW_URL);
     esp_http_client_set_method(client, HTTP_METHOD_POST);
@@ -937,62 +663,94 @@ static void http_post_data(void) {
     esp_http_client_set_header(
         client, "X-CSRFToken",
         "eA8ob2RLGxH6sQ7njh6pokrwNNTxR7gDqpfhPY9VyO8M9B8HZIaMFrKClihBLO39");
+
     if ((err = esp_http_client_open(client, strlen(post_data_raw))) != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to open HTTP connection: %s",
-                 esp_err_to_name(err));
-        esp_http_client_cleanup(client);
-        free(urlbuffer_get);
-        free(sensor_adc);
-        free(post_data_raw);
-        return;
+        esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
+        goto http_post_raw_end;
     }
-    int wlen_raw;
-    wlen_raw =
-        esp_http_client_write(client, post_data_raw, strlen(post_data_raw));
-    if (wlen_raw < 0) {
-        ESP_LOGE(TAG, "Write failed");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        free(urlbuffer_get);
-        free(sensor_adc);
-        free(post_data_raw);
-        return;
+    client_open = true;
+    ESP_LOGI(TAG, "http client open");
+
+    if ((client_wr_len = esp_http_client_write(client, post_data_raw,
+                                               strlen(post_data_raw))) < 0) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto http_post_raw_end;
     }
-    ESP_LOGI(TAG, "http client write, length =%d", wlen_raw);
-    int content_length_raw = esp_http_client_fetch_headers(client);
-    if (content_length < 0) {
-        ESP_LOGE(TAG, "failed to fetch header");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        free(urlbuffer_get);
-        free(sensor_adc);
-        free(post_data_raw);
-        return;
+    ESP_LOGI(TAG, "http client write, length: %d", client_wr_len);
+
+    if ((content_length = esp_http_client_fetch_headers(client)) < 0) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto http_post_raw_end;
     }
-    ESP_LOGI(TAG, "http client fetech, length =%d", content_length_raw);
-    int total_read_len_raw = 0, read_len_raw;
-    char *buffer_raw = calloc(MAX_HTTP_RECV_BUFFER + 1, sizeof(char));
-    if (total_read_len_raw < content_length_raw &&
-        content_length_raw <= MAX_HTTP_RECV_BUFFER) {
-        read_len_raw =
-            esp_http_client_read(client, buffer_raw, content_length_raw);
-        if (read_len_raw <= 0) {
-            ESP_LOGE(TAG, "Error read data");
-        }
-        ESP_LOGI(TAG, "http client read: %s", buffer_raw);
-        ESP_LOGI(TAG, "read_len: %d", read_len_raw);
+    ESP_LOGI(TAG, "http client fetech, length: %d", content_length);
+
+    if (content_length > MAX_HTTP_RECV_BUFFER) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto http_post_raw_end;
     }
 
-    esp_http_client_close(client);
-    ESP_LOGI(TAG, "http client close");
+    json_str = calloc(MAX_HTTP_RECV_BUFFER + 1, sizeof(char));
+    if (json_str == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto http_post_raw_end;
+    }
+
+    int read_len;
+
+    if ((read_len = esp_http_client_read(client, json_str, content_length)) <=
+        0) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto http_post_raw_end;
+    }
+    ESP_LOGI(TAG, "http client read json: %s", json_str);
+    ESP_LOGI(TAG, "read_len: %d", read_len);
+
+http_post_raw_end:
+    if (post_data_raw) {
+        free(post_data_raw);
+    }
+    if (json_str) {
+        free(json_str);
+    }
+    if (client_open) {
+        esp_http_client_close(client);
+        ESP_LOGI(TAG, "http client close");
+    }
+}
+
+static void http_post_data(void) {
+#define JSON_URL_VAL_LEN 256
+
+    ESP_LOGI(TAG, "Free Heap Internal is:  %d Byte",
+             heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    ESP_LOGI(TAG, "Free Heap PSRAM    is:  %d Byte",
+             heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+
+    esp_http_client_config_t config = {
+        .url = HTTP_PHOTO_URL,
+        .event_handler = http_event_handler,
+    };
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        return;
+    }
+    ESP_LOGI(TAG, "http client init");
+
+    char *json_url_val = calloc(JSON_URL_VAL_LEN, sizeof(char));
+    if (json_url_val == NULL) {
+        esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
+        return;
+    }
+
+    time_t unix_timestamp;
+    http_post_photo(client, json_url_val, JSON_URL_VAL_LEN, &unix_timestamp);
+    vTaskDelay(pdMS_TO_TICKS(100));
+    http_post_raw(client, json_url_val, 1230, 1, unix_timestamp);
 
     esp_http_client_cleanup(client);
     ESP_LOGI(TAG, "http client cleanup");
-
-    free(urlbuffer_get);
-    free(sensor_adc);
-    free(post_data_raw);
-    free(buffer_raw);
     return;
 }
 
