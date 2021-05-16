@@ -911,6 +911,7 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
         BLUFI_INFO("BLUFI ble disconnect");
         blufi_security_deinit();
         esp_ble_gap_start_advertising(&ble_adv_params);
+        esp_wifi_disconnect();
         break;
     case ESP_BLUFI_EVENT_SET_WIFI_OPMODE:
         BLUFI_INFO("BLUFI Set WIFI opmode %d", param->wifi_mode.op_mode);
