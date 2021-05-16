@@ -43,7 +43,7 @@
 
 #define TAG "app_wifi"
 
-#define BLUFI_DEVICE_NAME "BLUFI_DEVICE" //"Lulupet AI Litter Box"
+#define BLUFI_DEVICE_NAME "Lulupet AI Litter Box"
 #define DATA_LENGTH 512    /*!< Data buffer length of test buffer */
 #define RW_TEST_LENGTH 128 /*!< Data length for r/w test, [0,DATA_LENGTH] */
 #define DELAY_TIME_BETWEEN_ITEMS_MS                                            \
@@ -153,8 +153,13 @@ extern const char howsmyssl_com_root_cert_pem_end[] asm(
 static esp_err_t esp_err_print(esp_err_t err, const char *func, uint32_t line);
 static void service_connect_event_handler(void *arg, esp_event_base_t base,
                                           int32_t event_id, void *event_data);
+static void ble_gap_event_handler(esp_gap_ble_cb_event_t event,
+                                  esp_ble_gap_cb_param_t *param);
 static void blufi_event_callback(esp_blufi_cb_event_t event,
                                  esp_blufi_cb_param_t *param);
+static void blufi_init(void);
+static void blufi_check_connect(void);
+
 static void wifi_init(void);
 static void wifi_init_from_nvs(void);
 static void wifi_check_connect(uint32_t wait_ms, uint8_t retry);
@@ -178,9 +183,6 @@ static esp_err_t nvs_reset_wifi_val(void);
 static esp_err_t nvs_read_lid_token(void);
 static esp_err_t nvs_read_wifi_config(void);
 static esp_err_t nvs_write_lid_token(void);
-
-static void blufi_init(void);
-static void blufi_check_connect(void);
 
 static esp_err_t event_handler(void *ctx, system_event_t *event);
 
@@ -776,7 +778,6 @@ static esp_err_t event_handler(void *ctx, system_event_t *event) {
     return ESP_OK;
 }
 
-/* connect information */
 static esp_err_t wifi_event_handler(void *ctx, system_event_t *event) {
     wifi_mode_t mode;
 
@@ -887,38 +888,53 @@ static esp_blufi_callbacks_t blufi_callbacks = {
     .checksum_func = blufi_crc_checksum,
 };
 
+static void ble_gap_event_handler(esp_gap_ble_cb_event_t event,
+                                  esp_ble_gap_cb_param_t *param) {
+    switch (event) {
+    case ESP_GAP_BLE_ADV_DATA_SET_COMPLETE_EVT:
+        esp_ble_gap_start_advertising(&ble_adv_params);
+        set_led_cmd(LED_BLUE_1HZ);
+        break;
+    default:
+        break;
+    }
+}
+
 static void blufi_event_callback(esp_blufi_cb_event_t event,
                                  esp_blufi_cb_param_t *param) {
     /* actually, should post to blufi_task handle the procedure,
      * now, as a example, we do it more simply */
     switch (event) {
     case ESP_BLUFI_EVENT_INIT_FINISH:
-        BLUFI_INFO("BLUFI init finish");
         esp_ble_gap_set_device_name(BLUFI_DEVICE_NAME);
         esp_ble_gap_config_adv_data(&example_adv_data);
+        BLUFI_INFO("init finish");
         break;
     case ESP_BLUFI_EVENT_DEINIT_FINISH:
-        BLUFI_INFO("BLUFI deinit finish");
+        set_led_cmd(LED_ALL_OFF);
+        BLUFI_INFO("deinit finish");
         break;
     case ESP_BLUFI_EVENT_BLE_CONNECT:
-        BLUFI_INFO("BLUFI ble connect");
         server_if = param->connect.server_if;
         conn_id = param->connect.conn_id;
         esp_ble_gap_stop_advertising();
         blufi_security_init();
+        set_led_cmd(LED_BLUE_SOLID);
+        BLUFI_INFO("ble connect");
         break;
     case ESP_BLUFI_EVENT_BLE_DISCONNECT:
-        BLUFI_INFO("BLUFI ble disconnect");
         blufi_security_deinit();
         esp_ble_gap_start_advertising(&ble_adv_params);
         esp_wifi_disconnect();
+        set_led_cmd(LED_BLUE_1HZ);
+        BLUFI_INFO("ble disconnect");
         break;
     case ESP_BLUFI_EVENT_SET_WIFI_OPMODE:
-        BLUFI_INFO("BLUFI Set WIFI opmode %d", param->wifi_mode.op_mode);
         ESP_ERROR_CHECK(esp_wifi_set_mode(param->wifi_mode.op_mode));
+        BLUFI_INFO("Set WIFI opmode %d", param->wifi_mode.op_mode);
         break;
     case ESP_BLUFI_EVENT_REQ_CONNECT_TO_AP:
-        BLUFI_INFO("BLUFI requset wifi connect to AP");
+        BLUFI_INFO("requset wifi connect to AP");
         /* there is no wifi callback when the device has already connected to
         this wifi so disconnect wifi before connection.
         */
@@ -926,12 +942,11 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
         esp_wifi_connect();
         break;
     case ESP_BLUFI_EVENT_REQ_DISCONNECT_FROM_AP:
-        BLUFI_INFO("BLUFI requset wifi disconnect from AP");
+        BLUFI_INFO("requset wifi disconnect from AP");
         esp_wifi_disconnect();
         break;
     case ESP_BLUFI_EVENT_REPORT_ERROR:
-        BLUFI_ERROR("BLUFI report error, error code %d",
-                    param->report_error.state);
+        BLUFI_ERROR("report error, error code %d", param->report_error.state);
         esp_blufi_send_error_info(param->report_error.state);
         break;
     case ESP_BLUFI_EVENT_GET_WIFI_STATUS: {
@@ -939,7 +954,6 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
         esp_blufi_extra_info_t info;
 
         esp_wifi_get_mode(&mode);
-
         if (gl_sta_connected) {
             memset(&info, 0, sizeof(esp_blufi_extra_info_t));
             memcpy(info.sta_bssid, gl_sta_bssid, 6);
@@ -952,13 +966,12 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
             esp_blufi_send_wifi_conn_report(mode, ESP_BLUFI_STA_CONN_FAIL, 0,
                                             NULL);
         }
-        BLUFI_INFO("BLUFI get wifi status from AP");
-
+        BLUFI_INFO("get wifi status from AP");
         break;
     }
     case ESP_BLUFI_EVENT_RECV_SLAVE_DISCONNECT_BLE:
-        BLUFI_INFO("blufi close a gatt connection");
         esp_blufi_close(server_if, conn_id);
+        BLUFI_INFO("close a gatt connection");
         break;
     case ESP_BLUFI_EVENT_DEAUTHENTICATE_STA:
         /* TODO */
@@ -967,21 +980,21 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
         memcpy(sta_config.sta.bssid, param->sta_bssid.bssid, 6);
         sta_config.sta.bssid_set = 1;
         esp_wifi_set_config(WIFI_IF_STA, &sta_config);
-        BLUFI_INFO("Recv STA BSSID %s", sta_config.sta.ssid);
+        BLUFI_INFO("recv STA BSSID %s", sta_config.sta.ssid);
         break;
     case ESP_BLUFI_EVENT_RECV_STA_SSID:
         strncpy((char *)sta_config.sta.ssid, (char *)param->sta_ssid.ssid,
                 param->sta_ssid.ssid_len);
         sta_config.sta.ssid[param->sta_ssid.ssid_len] = '\0';
         esp_wifi_set_config(WIFI_IF_STA, &sta_config);
-        BLUFI_INFO("Recv STA SSID %s", sta_config.sta.ssid);
+        BLUFI_INFO("recv STA SSID %s", sta_config.sta.ssid);
         break;
     case ESP_BLUFI_EVENT_RECV_STA_PASSWD:
         strncpy((char *)sta_config.sta.password,
                 (char *)param->sta_passwd.passwd, param->sta_passwd.passwd_len);
         sta_config.sta.password[param->sta_passwd.passwd_len] = '\0';
         esp_wifi_set_config(WIFI_IF_STA, &sta_config);
-        BLUFI_INFO("Recv STA PASSWORD %s", sta_config.sta.password);
+        BLUFI_INFO("recv STA PASSWORD %s", sta_config.sta.password);
         break;
     case ESP_BLUFI_EVENT_RECV_SOFTAP_SSID:
         strncpy((char *)ap_config.ap.ssid, (char *)param->softap_ssid.ssid,
@@ -989,7 +1002,7 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
         ap_config.ap.ssid[param->softap_ssid.ssid_len] = '\0';
         ap_config.ap.ssid_len = param->softap_ssid.ssid_len;
         esp_wifi_set_config(WIFI_IF_AP, &ap_config);
-        BLUFI_INFO("Recv SOFTAP SSID %s, ssid len %d", ap_config.ap.ssid,
+        BLUFI_INFO("recv SOFTAP SSID %s, ssid len %d", ap_config.ap.ssid,
                    ap_config.ap.ssid_len);
         break;
     case ESP_BLUFI_EVENT_RECV_SOFTAP_PASSWD:
@@ -998,7 +1011,7 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
                 param->softap_passwd.passwd_len);
         ap_config.ap.password[param->softap_passwd.passwd_len] = '\0';
         esp_wifi_set_config(WIFI_IF_AP, &ap_config);
-        BLUFI_INFO("Recv SOFTAP PASSWORD %s len = %d", ap_config.ap.password,
+        BLUFI_INFO("recv SOFTAP PASSWORD %s len = %d", ap_config.ap.password,
                    param->softap_passwd.passwd_len);
         break;
     case ESP_BLUFI_EVENT_RECV_SOFTAP_MAX_CONN_NUM:
@@ -1007,7 +1020,7 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
         }
         ap_config.ap.max_connection = param->softap_max_conn_num.max_conn_num;
         esp_wifi_set_config(WIFI_IF_AP, &ap_config);
-        BLUFI_INFO("Recv SOFTAP MAX CONN NUM %d", ap_config.ap.max_connection);
+        BLUFI_INFO("recv SOFTAP MAX CONN NUM %d", ap_config.ap.max_connection);
         break;
     case ESP_BLUFI_EVENT_RECV_SOFTAP_AUTH_MODE:
         if (param->softap_auth_mode.auth_mode >= WIFI_AUTH_MAX) {
@@ -1015,7 +1028,7 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
         }
         ap_config.ap.authmode = param->softap_auth_mode.auth_mode;
         esp_wifi_set_config(WIFI_IF_AP, &ap_config);
-        BLUFI_INFO("Recv SOFTAP AUTH MODE %d", ap_config.ap.authmode);
+        BLUFI_INFO("recv SOFTAP AUTH MODE %d", ap_config.ap.authmode);
         break;
     case ESP_BLUFI_EVENT_RECV_SOFTAP_CHANNEL:
         if (param->softap_channel.channel > 13) {
@@ -1023,7 +1036,7 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
         }
         ap_config.ap.channel = param->softap_channel.channel;
         esp_wifi_set_config(WIFI_IF_AP, &ap_config);
-        BLUFI_INFO("Recv SOFTAP CHANNEL %d", ap_config.ap.channel);
+        BLUFI_INFO("recv SOFTAP CHANNEL %d", ap_config.ap.channel);
         break;
     case ESP_BLUFI_EVENT_GET_WIFI_LIST: {
         wifi_scan_config_t scanConf = {
@@ -1031,68 +1044,64 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
         ESP_ERROR_CHECK(esp_wifi_scan_start(&scanConf, true));
         break;
     }
-    case ESP_BLUFI_EVENT_RECV_CUSTOM_DATA:
-        BLUFI_INFO("Recv Custom Data %d", param->custom_data.data_len);
-        // esp_log_buffer_hex("Custom Data", param->custom_data.data,
-        // param->custom_data.data_len);
-        char *custimdataBuffer = malloc(200);
-        sprintf(custimdataBuffer, "%s", param->custom_data.data);
-        cJSON *pJsonRoot = cJSON_Parse(custimdataBuffer);
+    case ESP_BLUFI_EVENT_RECV_CUSTOM_DATA: {
+        BLUFI_INFO("recv custom data length[%d]", param->custom_data.data_len);
+        char *custom_data_buf = malloc(param->custom_data.data_len);
+        snprintf(custom_data_buf, param->custom_data.data_len, "%s",
+                 param->custom_data.data);
+        cJSON *pJsonRoot = cJSON_Parse(custom_data_buf);
         if (NULL != pJsonRoot) {
             cJSON *plid = cJSON_GetObjectItem(pJsonRoot, "lid");
             if (NULL != plid) {
                 if (cJSON_IsString(plid)) {
                     sprintf(lulupet_lid_get, "%s", plid->valuestring);
-                    ESP_LOGI(TAG, "read lid:%s", lulupet_lid_get);
+                    BLUFI_INFO("read lid:%s", lulupet_lid_get);
                 } else
-                    ESP_LOGI(TAG, "lid is not string");
+                    BLUFI_ERROR("lid is not string");
             } else
-                ESP_LOGI(TAG, "get object lid fail");
+                BLUFI_ERROR("get object lid fail");
 
             cJSON *ptoken = cJSON_GetObjectItem(pJsonRoot, "token");
             if (NULL != ptoken) {
                 if (cJSON_IsString(ptoken)) {
                     sprintf(lulupet_token_get, "%s", ptoken->valuestring);
-                    ESP_LOGI(TAG, "read token:%s", lulupet_token_get);
+                    BLUFI_INFO("read token:%s", lulupet_token_get);
                 } else
-                    ESP_LOGI(TAG, "token is not string");
+                    BLUFI_ERROR("token is not string");
             } else
-                ESP_LOGI(TAG, "get object token fail");
-        } else
-            ESP_LOGI(TAG, "json parse fail");
-        free(custimdataBuffer);
+                BLUFI_ERROR("get object token fail");
+        } else {
+            BLUFI_ERROR("json parse fail");
+        }
+        free(custom_data_buf);
         break;
+    }
     case ESP_BLUFI_EVENT_RECV_USERNAME:
+        BLUFI_INFO("recv username");
         /* Not handle currently */
         break;
     case ESP_BLUFI_EVENT_RECV_CA_CERT:
+        BLUFI_INFO("recv CA CERT");
         /* Not handle currently */
         break;
     case ESP_BLUFI_EVENT_RECV_CLIENT_CERT:
+        BLUFI_INFO("recv CLIENT CERT");
         /* Not handle currently */
         break;
     case ESP_BLUFI_EVENT_RECV_SERVER_CERT:
+        BLUFI_INFO("recv SERVER CERT");
         /* Not handle currently */
         break;
     case ESP_BLUFI_EVENT_RECV_CLIENT_PRIV_KEY:
+        BLUFI_INFO("recv CLIENT PRIV KEY");
         /* Not handle currently */
         break;
-        ;
     case ESP_BLUFI_EVENT_RECV_SERVER_PRIV_KEY:
+        BLUFI_INFO("recv SERVER PRIV KEY");
         /* Not handle currently */
         break;
     default:
-        break;
-    }
-}
-
-static void gap_event_handler(esp_gap_ble_cb_event_t event,
-                              esp_ble_gap_cb_param_t *param) {
-    switch (event) {
-    case ESP_GAP_BLE_ADV_DATA_SET_COMPLETE_EVT:
-        esp_ble_gap_start_advertising(&ble_adv_params);
-        break;
-    default:
+        BLUFI_WARNING("recv not support event: %d", event);
         break;
     }
 }
@@ -1135,7 +1144,7 @@ static void blufi_init(void) {
 
     BLUFI_INFO("BLUFI VERSION %04x", esp_blufi_get_version());
 
-    ret = esp_ble_gap_register_callback(gap_event_handler);
+    ret = esp_ble_gap_register_callback(ble_gap_event_handler);
     if (ret) {
         BLUFI_ERROR("%s:L%d gap register failed, error code = %x", __func__,
                     __LINE__, ret);
@@ -1156,24 +1165,22 @@ static void blufi_check_connect(void) {
     blufi_init();
     while (1) {
         esp_blufi_profile_init(); // start blufi funciton
-        set_led_cmd(LED_BLUE_1HZ);
         if (wifi_event_check_conn(BLUFI_CHK_CONN_MS))
             return;
 
         BLUFI_WARNING(
             "blufi can't connect to AP, wait %s",
             app_key_event_type_str(KEY_EVENT_PRESS_2_TIMES_WITHIN_3_SEC));
-        set_led_cmd(LED_ALL_OFF);
         esp_blufi_profile_deinit(); // stop blufi funciton
 
         while (1) {
-            BLUFI_WARNING("wait key event");
+            BLUFI_DEBUG("wait key event");
             vTaskDelay(100 / portTICK_PERIOD_MS);
             if (key_event->key_event_type ==
                 KEY_EVENT_PRESS_2_TIMES_WITHIN_3_SEC) {
                 BLUFI_INFO("receive key event: %s",
                            app_key_event_type_str(key_event->key_event_type));
-                key_event->key_event_type = KEY_EVENT_NONE; // reset ley event
+                key_event->key_event_type = KEY_EVENT_NONE; // reset key event
                 break;
             }
         }
@@ -1642,7 +1649,6 @@ static void service_connect_event_handler(void *arg, esp_event_base_t base,
 void app_wifi_main(esp_event_loop_handle_t event_loop) {
     // Creat message queue and LED task
     ESP_LOGI(TAG, "start connect process");
-    set_led_cmd(LED_BLUE_SOLID);
 
     esp_event_handler_register_with(event_loop, LULUPET_EVENT_BASE,
                                     ESP_EVENT_ANY_ID,
