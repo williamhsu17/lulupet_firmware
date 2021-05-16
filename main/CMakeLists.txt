@@ -13,6 +13,7 @@ set(
   "blufi.c"
   "blufi_security.c" 
   "board_driver.c"
+  "task_httpc.c"
   "timer_tick.c"
 )
 set(
