@@ -94,18 +94,18 @@ static void http_post_photo(esp_http_client_handle_t client, char *json_url_val,
     // read unix timestamp
     *timestamp = time(NULL);
     camera_take_photo(&fb);
-    ESP_LOGW(TAG, "L%d", __LINE__);
+
     if (fb->format != PIXFORMAT_JPEG) {
         ESP_LOGE(TAG, "camera use the %d format", fb->format);
         return;
     }
-    ESP_LOGW(TAG, "L%d", __LINE__);
+
     // HTTP HEAD
     const char *content_type =
         "multipart/form-data; boundary=----WebKitFormBoundarykqaGaA5tlVdQyckh";
-    ESP_LOGW(TAG, "L%d", __LINE__);
+
     const char *boundary = "----WebKitFormBoundarykqaGaA5tlVdQyckh";
-    ESP_LOGW(TAG, "L%d", __LINE__);
+
     payload_header = calloc(HTTP_PAYLOAD_HEADER_LEN, sizeof(char));
     if (payload_header == NULL) {
         esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
@@ -115,7 +115,7 @@ static void http_post_photo(esp_http_client_handle_t client, char *json_url_val,
              "--%s\r\nContent-Disposition: form-data; name=\"image\"; "
              "filename=\"%s\"\r\nContent-Type: image/jpeg\r\n\r\n",
              boundary, HTTP_PAYLOAD_HEADER_FILENAME);
-    ESP_LOGW(TAG, "L%d", __LINE__);
+
     payload_footer = calloc(HTTP_PAYLOAD_FOOTER_LEN, sizeof(char));
     if (payload_footer == NULL) {
         esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
@@ -123,7 +123,7 @@ static void http_post_photo(esp_http_client_handle_t client, char *json_url_val,
     }
     snprintf(payload_footer, HTTP_PAYLOAD_FOOTER_LEN, "\r\n--%s--\r\n",
              boundary);
-    ESP_LOGW(TAG, "L%d", __LINE__);
+
     int content_length =
         strlen(payload_header) + fb->len + strlen(payload_footer);
     payload_length = calloc(HTTP_PAYLOAD_LENGTH_LEN, sizeof(char));
@@ -132,11 +132,11 @@ static void http_post_photo(esp_http_client_handle_t client, char *json_url_val,
         goto http_post_photo_end;
     }
     snprintf(payload_length, HTTP_PAYLOAD_LENGTH_LEN, "%d", content_length);
-    ESP_LOGW(TAG, "L%d", __LINE__);
+
     ESP_LOGI(TAG, "payloadLength:\n%s", payload_length);
     ESP_LOGI(TAG, "payloadHeader:\n%s", payload_header);
     ESP_LOGI(TAG, "payloadFooter:\n%s", payload_footer);
-    ESP_LOGW(TAG, "L%d", __LINE__);
+
     // esp_http_client_open -> esp_http_client_write ->
     // esp_http_client_fetch_headers -> esp_http_client_read (and option)
     // esp_http_client_close.
@@ -184,7 +184,7 @@ static void http_post_photo(esp_http_client_handle_t client, char *json_url_val,
         esp_err_print(ESP_FAIL, __func__, __LINE__);
         goto http_post_photo_end;
     }
-    ESP_LOGI(TAG, "http client fetech header, length =%d", content_length);
+    ESP_LOGI(TAG, "http client fetech header, length: %d", content_length);
 
     int read_len;
     json_str = calloc(MAX_HTTP_RECV_BUFFER + 1, sizeof(char));
