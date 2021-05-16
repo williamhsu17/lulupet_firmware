@@ -103,6 +103,15 @@ static void led_task(void *pvParameter) {
             }
             repeat_count++;
             break;
+        case LED_GREEN_1HZ:
+            if (repeat_count % 10 == 0) {
+                repeat_count = 0;
+                board_set_rgb_led(false, true, false);
+            } else if (repeat_count % 5 == 0) {
+                board_set_rgb_led(false, false, false);
+            }
+            repeat_count++;
+            break;
         default:
             break;
         }
