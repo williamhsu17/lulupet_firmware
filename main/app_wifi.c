@@ -57,10 +57,16 @@
 #define WIFI_CONN_RETRY 4
 
 typedef struct {
+    esp_event_loop_handle_t evt_loop;
+} httpc_task_config_t;
+
+typedef struct {
     key_loop_event_t key_event;
 } task_connect_cb_t;
 
+static httpc_task_config_t task_conf;
 static wifi_config_t sta_config;
+static task_connect_cb_t task_conn_cb;
 /* FreeRTOS event group to signal when we are connected & ready to make a
  * request */
 static EventGroupHandle_t wifi_event_group;
@@ -74,7 +80,6 @@ static char lulupet_lid[10] = "lid118";
 static char lulupet_token[10] = "WebLid118";
 static char lulupet_lid_get[NVS_LULUPET_LID_LEN];
 static char lulupet_token_get[NVS_LULUPET_TOKEN_LEN];
-static task_connect_cb_t task_conn_cb;
 
 static esp_err_t esp_err_print(esp_err_t err, const char *func, uint32_t line);
 static void service_connect_event_handler(void *arg, esp_event_base_t base,
@@ -87,10 +92,9 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event);
 static void set_led_cmd(unsigned int led_cmd_load);
 static void sntp_obtain_time(void);
 static void sntp_check(void);
-static void check_time_sntp(void);
-static void app_httpc_main(void);
-static void http_post_task(void *pvParameter);
-static void http_post_data(void);
+static void snpt_time_check(void);
+static void httpc_task(void *pvParameter);
+static void httpc_task_start(esp_event_loop_handle_t event_loop);
 
 static esp_err_t nvs_init(void);
 static int32_t nvs_read_wifichecked(void);
@@ -627,7 +631,7 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event) {
     return ESP_OK;
 }
 
-static void check_time_sntp(void) {
+static void snpt_time_check(void) {
     time_t now;
     struct tm timeinfo;
     time(&now);
@@ -680,32 +684,6 @@ static void sntp_check(void) {
     sntp_setoperatingmode(SNTP_OPMODE_POLL);
     sntp_setservername(0, "pool.ntp.org");
     sntp_init();
-}
-
-static void app_httpc_main(void) {
-    ESP_LOGI(TAG, "start");
-    xTaskCreate(&http_post_task, "http_post_task", 4096, NULL, 5, NULL);
-}
-
-static void http_post_task(void *pvParameter) {
-    int i = 0;
-
-    while (i < 1) {
-        ESP_LOGI(TAG, "Checking WiFi status");
-        xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true,
-                            portMAX_DELAY);
-        ESP_LOGI(TAG, "Start to upload photo");
-        http_post_data();
-        // capture_photo_only();
-        ESP_LOGI(TAG, "http post data test : %d ok", i);
-        i++;
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-
-    ESP_LOGI(TAG, "end");
-    while (1) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
 }
 
 static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
@@ -773,22 +751,6 @@ static void http_post_data(void) {
         ESP_LOGI(TAG, "Camera capture RAW");
     }
 
-    // read adc value
-    unsigned int *sensor_adc = (unsigned int *)malloc(sizeof(unsigned int));
-// unsigned int *sensor_adc;
-#if DUMMY_SENSOR
-    *sensor_adc = 999;
-#else
-    // TODO: get sensor_adc from app_weight
-#endif
-
-// read PIR
-#if DUMMY_SENSOR
-    int sensor_pir = 1;
-#else
-    int sensor_pir = gpio_get_level(GPIO_INPUT_PIR);
-#endif
-
     // read unix timestamp
     time_t seconds;
     seconds = time(NULL);
@@ -809,15 +771,15 @@ static void http_post_data(void) {
     int headLength = strlen(payloadHeader);
     int footerLength = strlen(payloadFooter);
     int contentLength = headLength + fileSize + footerLength;
-    ESP_LOGI(TAG, "payloadHeader length =%d", headLength);
-    ESP_LOGI(TAG, "picture length =%d", fileSize);
-    ESP_LOGI(TAG, "payloadFooter length =%d", footerLength);
-    ESP_LOGI(TAG, "contentLength length =%d", contentLength);
+    ESP_LOGI(TAG, "payloadHeader length: %d", headLength);
+    ESP_LOGI(TAG, "picture length: %d", fileSize);
+    ESP_LOGI(TAG, "payloadFooter length: %d", footerLength);
+    ESP_LOGI(TAG, "contentLength length: %d", contentLength);
     char *payloadLength = malloc(5);
     sprintf(payloadLength, "%d", contentLength);
     ESP_LOGI(TAG, "payloadLength length =%s", payloadLength);
-    ESP_LOGI(TAG, "payloadHeader:\r\n%s", payloadHeader);
-    ESP_LOGI(TAG, "payloadFooter:\r\n%s", payloadFooter);
+    ESP_LOGI(TAG, "payloadHeader:\n%s", payloadHeader);
+    ESP_LOGI(TAG, "payloadFooter:\n%s", payloadFooter);
 
     // HTTP process
     esp_http_client_config_t config = {
@@ -840,7 +802,7 @@ static void http_post_data(void) {
     esp_http_client_set_method(client, HTTP_METHOD_POST);
 
     if ((err = esp_http_client_open(client, contentLength)) != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to open HTTP connection: %s",
+        ESP_LOGE(TAG, "failed to open HTTP connection: %s",
                  esp_err_to_name(err));
         esp_http_client_cleanup(client);
         esp_camera_fb_return(fb);
@@ -863,7 +825,7 @@ static void http_post_data(void) {
         free(payloadLength);
         return;
     }
-    ESP_LOGI(TAG, "http client write, length =%d", writeres);
+    ESP_LOGI(TAG, "http client write, length: %d", writeres);
     writeres = esp_http_client_write(client, (const char *)fb->buf, (fb->len));
     if (writeres < 0) {
         ESP_LOGE(TAG, "Write failed");
@@ -875,7 +837,7 @@ static void http_post_data(void) {
         free(payloadLength);
         return;
     }
-    ESP_LOGI(TAG, "http client write, length =%d", writeres);
+    ESP_LOGI(TAG, "http client write, length: %d", writeres);
     writeres =
         esp_http_client_write(client, payloadFooter, strlen(payloadFooter));
     if (writeres < 0) {
@@ -903,7 +865,7 @@ static void http_post_data(void) {
     }
     ESP_LOGI(TAG, "http client fetech, length =%d", content_length);
     int total_read_len = 0, read_len;
-    char *buffer = malloc(MAX_HTTP_RECV_BUFFER + 1);
+    char *buffer = calloc(MAX_HTTP_RECV_BUFFER + 1, sizeof(char));
     char *urlbuffer_get = malloc(100);
     if (total_read_len < content_length &&
         content_length <= MAX_HTTP_RECV_BUFFER) {
@@ -911,8 +873,8 @@ static void http_post_data(void) {
         if (read_len <= 0) {
             ESP_LOGE(TAG, "Error read data");
         }
-        ESP_LOGI(TAG, "http client read:%s", buffer);
-        ESP_LOGI(TAG, "read_len = %d", read_len);
+        ESP_LOGI(TAG, "read_len: %d", read_len);
+        ESP_LOGI(TAG, "http client read: %s", buffer);
 
         cJSON *pJsonRoot = cJSON_Parse(buffer);
         if (NULL != pJsonRoot) {
@@ -944,6 +906,21 @@ static void http_post_data(void) {
     free(buffer);
 
     vTaskDelay(pdMS_TO_TICKS(100));
+
+    // read adc value
+    unsigned int *sensor_adc = (unsigned int *)malloc(sizeof(unsigned int));
+#if DUMMY_SENSOR
+    *sensor_adc = 999;
+#else
+    // TODO: get sensor_adc from app_weight
+#endif
+
+// read PIR
+#if DUMMY_SENSOR
+    int sensor_pir = 1;
+#else
+    int sensor_pir = gpio_get_level(GPIO_INPUT_PIR);
+#endif
 
     ESP_LOGI(TAG, "http post raw data");
     char *post_data_raw = malloc(200);
@@ -984,7 +961,7 @@ static void http_post_data(void) {
     ESP_LOGI(TAG, "http client write, length =%d", wlen_raw);
     int content_length_raw = esp_http_client_fetch_headers(client);
     if (content_length < 0) {
-        ESP_LOGE(TAG, "Failed to fetch header");
+        ESP_LOGE(TAG, "failed to fetch header");
         esp_http_client_close(client);
         esp_http_client_cleanup(client);
         free(urlbuffer_get);
@@ -994,7 +971,7 @@ static void http_post_data(void) {
     }
     ESP_LOGI(TAG, "http client fetech, length =%d", content_length_raw);
     int total_read_len_raw = 0, read_len_raw;
-    char *buffer_raw = malloc(MAX_HTTP_RECV_BUFFER + 1);
+    char *buffer_raw = calloc(MAX_HTTP_RECV_BUFFER + 1, sizeof(char));
     if (total_read_len_raw < content_length_raw &&
         content_length_raw <= MAX_HTTP_RECV_BUFFER) {
         read_len_raw =
@@ -1002,8 +979,8 @@ static void http_post_data(void) {
         if (read_len_raw <= 0) {
             ESP_LOGE(TAG, "Error read data");
         }
-        ESP_LOGI(TAG, "http client read:%s", buffer_raw);
-        ESP_LOGI(TAG, "read_len = %d", read_len_raw);
+        ESP_LOGI(TAG, "http client read: %s", buffer_raw);
+        ESP_LOGI(TAG, "read_len: %d", read_len_raw);
     }
 
     esp_http_client_close(client);
@@ -1031,6 +1008,56 @@ static void service_connect_event_handler(void *arg, esp_event_base_t base,
     default:
         break;
     }
+}
+
+static void wifi_start(esp_event_loop_handle_t event_loop) {
+
+    esp_event_handler_register_with(event_loop, LULUPET_EVENT_BASE,
+                                    ESP_EVENT_ANY_ID,
+                                    service_connect_event_handler, NULL);
+
+    wifi_event_init();
+    ESP_LOGI(TAG, "load lid token from nvs");
+    nvs_read_lid_token(); // TODO: error handling
+    ESP_LOGI(TAG, "load WiFi Setting from nvs");
+    nvs_read_wifi_config(); // TODO: error handling
+    wifi_init_from_nvs();
+    set_led_cmd(LED_GREEN_1HZ);
+    wifi_check_connect(WIFI_CONN_CHK_MS, WIFI_CONN_RETRY);
+    set_led_cmd(LED_GREEN_SOLID);
+    ESP_LOGI(TAG, "connected to AP");
+    snpt_time_check();
+    ESP_LOGI(TAG, "Update time from SNTP");
+    // vTaskDelay(30000 / portTICK_PERIOD_MS);
+}
+
+static void httpc_task(void *pvParameter) {
+    httpc_task_config_t *conf = (httpc_task_config_t *)pvParameter;
+    int i = 0;
+
+    while (i < 1) {
+        ESP_LOGI(TAG, "checking WiFi status");
+        xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true,
+                            portMAX_DELAY);
+        ESP_LOGI(TAG, "start to upload photo");
+        http_post_data();
+        // capture_photo_only();
+        ESP_LOGI(TAG, "http post data test : %d ok", i);
+        i++;
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+
+    ESP_LOGI(TAG, "end");
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+static void httpc_task_start(esp_event_loop_handle_t event_loop) {
+
+    task_conf.evt_loop = event_loop;
+
+    xTaskCreate(&httpc_task, "httpc_task", 4096, (void *)&task_conf, 5, NULL);
 }
 
 esp_err_t nvs_write_wifi_val(int32_t set_value, wifi_config_t *wifi_config) {
@@ -1105,31 +1132,14 @@ esp_err_t nvs_write_lid_token(char *lid, char *token) {
 }
 
 void app_wifi_main(esp_event_loop_handle_t event_loop) {
-    // Creat message queue and LED task
     ESP_LOGI(TAG, "start connect process");
 
-    esp_event_handler_register_with(event_loop, LULUPET_EVENT_BASE,
-                                    ESP_EVENT_ANY_ID,
-                                    service_connect_event_handler, NULL);
-
-    wifi_event_init();
     nvs_init();
     if (!nvs_read_wifichecked()) {
         blufi_start(event_loop);
     } else {
-        ESP_LOGI(TAG, "load lid token from nvs");
-        nvs_read_lid_token(); // TODO: error handling
-        ESP_LOGI(TAG, "load WiFi Setting from nvs");
-        nvs_read_wifi_config(); // TODO: error handling
-        wifi_init_from_nvs();
-        set_led_cmd(LED_GREEN_1HZ);
-        wifi_check_connect(WIFI_CONN_CHK_MS, WIFI_CONN_RETRY);
-        set_led_cmd(LED_GREEN_SOLID);
-        ESP_LOGI(TAG, "connected to AP");
-        check_time_sntp();
-        ESP_LOGI(TAG, "Update time from SNTP");
-        // vTaskDelay(30000 / portTICK_PERIOD_MS);
+        wifi_start(event_loop);
     }
 
-    app_httpc_main();
+    httpc_task_start(event_loop);
 }
