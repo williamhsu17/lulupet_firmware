@@ -158,9 +158,9 @@ static void ble_gap_event_handler(esp_gap_ble_cb_event_t event,
 static void blufi_event_callback(esp_blufi_cb_event_t event,
                                  esp_blufi_cb_param_t *param);
 static void blufi_init(void);
+static void blufi_wifi_init(void);
 static void blufi_check_connect(void);
 
-static void wifi_init(void);
 static void wifi_init_from_nvs(void);
 static void wifi_check_connect(uint32_t wait_ms, uint8_t retry);
 static void wifi_event_init(void);
@@ -541,8 +541,11 @@ static void set_led_cmd(unsigned int led_cmd_load) {
 }
 
 static esp_err_t nvs_init(void) {
-    // Initialize NVS
     esp_err_t err;
+
+#if (FUNC_ERASE_NVS_BOOTUP)
+    ESP_ERROR_CHECK(nvs_flash_erase());
+#endif
     err = nvs_flash_init();
     ESP_LOGI(TAG, "nvs init");
     if (err == ESP_ERR_NVS_NO_FREE_PAGES ||
@@ -711,7 +714,7 @@ static void wifi_init_from_nvs(void) {
     wifi_config_t wifi_config = {};
     strcpy((char *)wifi_config.sta.ssid, (char *)sta_config.sta.ssid);
     strcpy((char *)wifi_config.sta.password, (char *)sta_config.sta.password);
-    BLUFI_INFO("Setting WiFi configuration SSID %s...", wifi_config.sta.ssid);
+    ESP_LOGI(TAG, "setting WiFi configuration SSID %s", wifi_config.sta.ssid);
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
@@ -778,19 +781,19 @@ static esp_err_t event_handler(void *ctx, system_event_t *event) {
     return ESP_OK;
 }
 
-static esp_err_t wifi_event_handler(void *ctx, system_event_t *event) {
+static esp_err_t blufi_wifi_event_handler(void *ctx, system_event_t *event) {
     wifi_mode_t mode;
 
     switch (event->event_id) {
     case SYSTEM_EVENT_STA_START:
         esp_wifi_connect();
+        BLUFI_INFO("wifi STA start");
         break;
     case SYSTEM_EVENT_STA_GOT_IP: {
         esp_blufi_extra_info_t info;
 
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
         esp_wifi_get_mode(&mode);
-
         memset(&info, 0, sizeof(esp_blufi_extra_info_t));
         memcpy(info.sta_bssid, gl_sta_bssid, 6);
         info.sta_bssid_set = true;
@@ -798,6 +801,7 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event) {
         info.sta_ssid_len = gl_sta_ssid_len;
         esp_blufi_send_wifi_conn_report(mode, ESP_BLUFI_STA_CONN_SUCCESS, 0,
                                         &info);
+        BLUFI_INFO("wifi STA got IP");
         break;
     }
     case SYSTEM_EVENT_STA_CONNECTED:
@@ -806,6 +810,7 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event) {
         memcpy(gl_sta_ssid, event->event_info.connected.ssid,
                event->event_info.connected.ssid_len);
         gl_sta_ssid_len = event->event_info.connected.ssid_len;
+        BLUFI_INFO("wifi STA conneted");
         break;
     case SYSTEM_EVENT_STA_DISCONNECTED:
         /* This is a workaround as ESP32 WiFi libs don't currently
@@ -816,6 +821,7 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event) {
         gl_sta_ssid_len = 0;
         esp_wifi_connect();
         xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
+        BLUFI_INFO("wifi STA disconneted");
         break;
     case SYSTEM_EVENT_AP_START:
         esp_wifi_get_mode(&mode);
@@ -829,12 +835,13 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event) {
             esp_blufi_send_wifi_conn_report(mode, ESP_BLUFI_STA_CONN_FAIL, 0,
                                             NULL);
         }
+        BLUFI_INFO("wifi AP start");
         break;
     case SYSTEM_EVENT_SCAN_DONE: {
         uint16_t apCount = 0;
         esp_wifi_scan_get_ap_num(&apCount);
         if (apCount == 0) {
-            BLUFI_INFO("Nothing AP found");
+            BLUFI_ERROR("Nothing AP found");
             break;
         }
         wifi_ap_record_t *ap_list =
@@ -860,19 +867,25 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event) {
         }
         esp_blufi_send_wifi_list(apCount, blufi_ap_list);
         esp_wifi_scan_stop();
-        free(ap_list);
-        free(blufi_ap_list);
+        if (ap_list) {
+            free(ap_list);
+        }
+        if (blufi_ap_list) {
+            free(blufi_ap_list);
+        }
+        BLUFI_INFO("wifi scan done");
         break;
     }
     default:
+        BLUFI_INFO("wifi didn't support event: %d", event->event_id);
         break;
     }
     return ESP_OK;
 }
 
-static void wifi_init(void) {
+static void blufi_wifi_init(void) {
     tcpip_adapter_init();
-    ESP_ERROR_CHECK(esp_event_loop_init(wifi_event_handler, NULL));
+    ESP_ERROR_CHECK(esp_event_loop_init(blufi_wifi_event_handler, NULL));
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
@@ -994,7 +1007,7 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
                 (char *)param->sta_passwd.passwd, param->sta_passwd.passwd_len);
         sta_config.sta.password[param->sta_passwd.passwd_len] = '\0';
         esp_wifi_set_config(WIFI_IF_STA, &sta_config);
-        BLUFI_INFO("recv STA PASSWORD %s", sta_config.sta.password);
+        BLUFI_DEBUG("recv STA PASSWORD %s", sta_config.sta.password);
         break;
     case ESP_BLUFI_EVENT_RECV_SOFTAP_SSID:
         strncpy((char *)ap_config.ap.ssid, (char *)param->softap_ssid.ssid,
@@ -1046,9 +1059,14 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
     }
     case ESP_BLUFI_EVENT_RECV_CUSTOM_DATA: {
         BLUFI_INFO("recv custom data length[%d]", param->custom_data.data_len);
-        char *custom_data_buf = malloc(param->custom_data.data_len);
-        snprintf(custom_data_buf, param->custom_data.data_len, "%s",
+        char *custom_data_buf = malloc(param->custom_data.data_len + 1);
+        if (!custom_data_buf) {
+            BLUFI_ERROR("malloc failed %s:L%d", __func__, __LINE__);
+            break;
+        }
+        snprintf(custom_data_buf, param->custom_data.data_len + 1, "%s",
                  param->custom_data.data);
+        BLUFI_INFO("custom_data_buf: %s", custom_data_buf);
         cJSON *pJsonRoot = cJSON_Parse(custom_data_buf);
         if (NULL != pJsonRoot) {
             cJSON *plid = cJSON_GetObjectItem(pJsonRoot, "lid");
@@ -1073,7 +1091,9 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
         } else {
             BLUFI_ERROR("json parse fail");
         }
-        free(custom_data_buf);
+        if (custom_data_buf) {
+            free(custom_data_buf);
+        }
         break;
     }
     case ESP_BLUFI_EVENT_RECV_USERNAME:
@@ -1162,6 +1182,7 @@ static void blufi_init(void) {
 static void blufi_check_connect(void) {
     key_loop_event_t *key_event = &task_conn_cb.key_event;
 
+    blufi_wifi_init();
     blufi_init();
     while (1) {
         esp_blufi_profile_init(); // start blufi funciton
@@ -1217,7 +1238,7 @@ static void check_time_sntp(void) {
 
 static void obtain_time(void) {
     // ESP_ERROR_CHECK( nvs_flash_init() );
-    // wifi_init();
+    // blufi_wifi_init();
     xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true,
                         portMAX_DELAY);
     initialize_sntp();
@@ -1335,18 +1356,18 @@ static void http_get_enable(void) {
     }
     ESP_LOGI(TAG, "http client open");
     int content_length = esp_http_client_fetch_headers(client);
-    ESP_LOGI(TAG, "http client fetech, length =%d", content_length);
+    ESP_LOGI(TAG, "http client fetech, length: %d", content_length);
     int total_read_len = 0, read_len;
-    char *buffer = malloc(MAX_HTTP_RECV_BUFFER + 1);
+    char *buffer = calloc(MAX_HTTP_RECV_BUFFER + 1, sizeof(char));
     if (total_read_len < content_length &&
         content_length <= MAX_HTTP_RECV_BUFFER) {
         read_len = esp_http_client_read(client, buffer, content_length);
         if (read_len <= 0) {
             ESP_LOGE(TAG, "Error read data");
         }
-        ESP_LOGI(TAG, "http client read:%s", buffer);
         buffer[read_len] = 0;
-        ESP_LOGI(TAG, "read_len = %d", read_len);
+        ESP_LOGI(TAG, "read_len: %d", read_len);
+        ESP_LOGI(TAG, "http client read: %s", buffer);
     }
 
     esp_http_client_close(client);
@@ -1658,7 +1679,6 @@ void app_wifi_main(esp_event_loop_handle_t event_loop) {
     nvs_init();
     if (!nvs_read_wifichecked()) {
         BLUFI_INFO("w/o WiFi configuration in NVS. run blufi");
-        wifi_init();
         blufi_check_connect();
         BLUFI_INFO("connected to AP");
         vTaskDelay(500 / portTICK_PERIOD_MS);
