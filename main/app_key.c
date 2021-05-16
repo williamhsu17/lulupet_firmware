@@ -32,6 +32,7 @@ typedef struct {
 static key_task_config_t task_conf;
 
 static char *key_event_name[] = {
+    "none",
     "press_over_5_sec",
     "press_2_times_within_3_sec",
 };
