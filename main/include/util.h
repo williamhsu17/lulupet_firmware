@@ -221,6 +221,8 @@ extern "C" {
 // Function
 #define FUNC_CMD_TASK 1    // 1: run console command line interface
 #define FUNC_WEIGHT_FAKE 0 // 1: use fake condition to test fsm
+#define FUNC_ERASE_NVS_BOOTUP                                                  \
+    0 // 1: nvs will be earesd during bootup for debugging blufi process
 
 #ifdef __cplusplus
 }
