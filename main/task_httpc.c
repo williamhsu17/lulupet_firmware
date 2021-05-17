@@ -59,17 +59,18 @@ static void httpc_loop_event_handler(void *arg, esp_event_base_t base,
         memcpy(&task_conf.weight_take_photo_evt,
                (weight_take_photo_event_t *)event_data,
                sizeof(weight_take_photo_event_t));
-        ESP_LOGW(TAG,
-                 "weight_take_photo_event: weight[%d g] pir[%d] eventid[%d]",
-                 task_conf.weight_take_photo_evt.weight_g,
-                 task_conf.weight_take_photo_evt.pir_val,
-                 task_conf.weight_take_photo_evt.eventid);
+        ESP_LOGW(
+            TAG,
+            "weight_take_photo_event recv: weight[%d g] pir[%d] eventid[%d]",
+            task_conf.weight_take_photo_evt.weight_g,
+            task_conf.weight_take_photo_evt.pir_val,
+            task_conf.weight_take_photo_evt.eventid);
         task_conf.weight_event_update = true;
         break;
     default:
         break;
     }
-    xSemaphoreTake(task_conf.data_mutex, portMAX_DELAY);
+    xSemaphoreGive(task_conf.data_mutex);
 }
 
 static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
