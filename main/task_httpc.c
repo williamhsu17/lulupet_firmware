@@ -32,7 +32,8 @@ static esp_err_t esp_err_print(esp_err_t err, const char *func, uint32_t line);
 static esp_err_t http_event_handler(esp_http_client_event_t *evt);
 static void http_post_photo(esp_http_client_handle_t client, char *json_url_val,
                             int json_url_val_len, time_t *timestamp);
-static void http_post_raw(esp_http_client_handle_t client, char *json_url_val,
+static void http_post_raw(esp_http_client_handle_t client,
+                          rawdata_eventid eventid, char *json_url_val,
                           uint32_t weight, bool pir, time_t timestamp);
 static void http_post_data(void);
 static void httpc_task(void *pvParameter);
@@ -254,7 +255,8 @@ http_post_photo_end:
     return;
 }
 
-static void http_post_raw(esp_http_client_handle_t client, char *json_url_val,
+static void http_post_raw(esp_http_client_handle_t client,
+                          rawdata_eventid eventid, char *json_url_val,
                           uint32_t weight, bool pir, time_t timestamp) {
     int client_wr_len;
     int content_length;
@@ -268,8 +270,8 @@ static void http_post_raw(esp_http_client_handle_t client, char *json_url_val,
     }
 
     snprintf(post_data_raw, HTTP_POST_RAW_DATA_LEN,
-             "lid=%s&token=%s&weight=%u&pir=%d&pic=%s&tt=%ld",
-             app_wifi_get_lid(), app_wifi_get_token(), weight, pir,
+             "lid=%s&token=%s&eventid=%d&weight=%u&pir=%d&pic=%s&tt=%ld",
+             app_wifi_get_lid(), app_wifi_get_token(), eventid, weight, pir,
              json_url_val, timestamp);
     ESP_LOGI(TAG, "post data:\n%s", post_data_raw);
 
@@ -365,7 +367,8 @@ static void http_post_data(void) {
     time_t unix_timestamp;
     http_post_photo(client, json_url_val, JSON_URL_VAL_LEN, &unix_timestamp);
     vTaskDelay(pdMS_TO_TICKS(100));
-    http_post_raw(client, json_url_val, 1230, 1, unix_timestamp);
+    http_post_raw(client, RAWDATA_EVENTID_TEST, json_url_val, 1230, 1,
+                  unix_timestamp);
 
     esp_http_client_cleanup(client);
     ESP_LOGI(TAG, "http client cleanup");
