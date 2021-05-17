@@ -5,7 +5,9 @@
 
 #define LULUPET_EVENT_BASE "LULUPET_EVENT"
 
-#define FOREACH_EVENT(X) X(LULUPET_EVENT_KEY)
+#define FOREACH_EVENT(X)                                                       \
+    X(LULUPET_EVENT_KEY)                                                       \
+    X(LULUPET_EVENT_TAKE_PHOTO)
 
 #define GEN_ENUM(v) v,
 

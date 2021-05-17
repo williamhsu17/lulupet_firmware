@@ -11,6 +11,7 @@
 
 #include "include/app_weight.h"
 #include "include/board_driver.h"
+#include "include/event.h"
 #include "include/util.h"
 
 #include <stdio.h>
@@ -26,6 +27,8 @@ static char *weight_fsm_name[] = {"start", "standby", "jump", "bigjump",
 weight_task_cb w_task_cb;
 
 // static function prototype
+static void weight_post_evnet(esp_event_loop_handle_t event_loop, float weight,
+                              rawdata_eventid eventid);
 static void weight_get(void);
 static void weight_fsm_check_start(void);
 static void weight_fsm_check_standby(void);
@@ -36,6 +39,21 @@ static void weight_fsm_check_bigjump(void);
 static void weight_fsm_goto_bigjump(void);
 static void weight_fsm_check_postevent(void);
 static void weight_fsm_goto_postevent(void);
+
+static void weight_post_evnet(esp_event_loop_handle_t event_loop, float weight,
+                              rawdata_eventid eventid) {
+
+    weight_take_photo_event_t evt;
+    evt.eventid = eventid;
+    evt.weight_g = (int)weight;
+    evt.pir_val = w_task_cb.pir_level;
+
+    ESP_LOGW(TAG,
+             "weight take photo event post weight[%d g] pir[%d] eventid[%d]",
+             evt.weight_g, evt.pir_val, evt.eventid);
+    esp_event_post_to(event_loop, LULUPET_EVENT_BASE, LULUPET_EVENT_TAKE_PHOTO,
+                      &evt, sizeof(evt), pdMS_TO_TICKS(1000));
+}
 
 static void weight_get(void) {
     if (w_task_cb.weight_pause_times) {
@@ -185,10 +203,11 @@ static void weight_fsm_check_bigjump(void) {
 
 static void weight_fsm_goto_bigjump(void) {
     // action
-    board_led_ctrl(LED_TYPE_IR, true);         // turn on IR led
-    ESP_LOGI(TAG, "TODO: take bigjump photo"); // send event to photo task
+    board_led_ctrl(LED_TYPE_IR, true); // turn on IR led
     w_task_cb.period_ms = w_task_cb.bugjump_period_ms;
     w_task_cb.period_cnt = 0;
+    weight_post_evnet(w_task_cb.evt_loop, w_task_cb.now_weight,
+                      RAWDATA_EVENTID_CAT_IN);
 
     // fsm change
     w_task_cb.now_stat = WEIGHT_TASK_STAT_BIGJUMP;
@@ -198,13 +217,15 @@ static void weight_fsm_check_postevent(void) {
     ++w_task_cb.postevnet_cnt;
     ESP_LOGI(TAG, "postevnet_cnt: %d", w_task_cb.postevnet_cnt);
     if (w_task_cb.postevnet_chk == w_task_cb.postevnet_num) {
-        ESP_LOGI(TAG, "TODO: take postevent photo"); // send event to photo task
         ESP_LOGI(TAG, "cat weight diff: %.3f g",
                  w_task_cb.now_weight -
                      w_task_cb.ref_weight); // record adc_weight - ref_weight
         ESP_LOGI(TAG, "cat druing time: %d ms",
                  w_task_cb.period_cnt *
                      w_task_cb.bugjump_period_ms); // record cat during time
+        weight_post_evnet(w_task_cb.evt_loop,
+                          (w_task_cb.now_weight - w_task_cb.ref_weight),
+                          RAWDATA_EVENTID_CAT_OUT);
         weight_fsm_goto_standby();
     }
 }
@@ -284,8 +305,12 @@ float weight_calculate(float adc, float weight_coefficeint) {
     return adc * weight_coefficeint;
 }
 
-void app_weight_main(void) {
+int weight_get_latest(void) { return (int)w_task_cb.now_weight; }
+
+void app_weight_main(esp_event_loop_handle_t event_loop) {
     ESP_LOGD(TAG, "app_weight_main start");
+
+    w_task_cb.evt_loop = event_loop;
 
     xTaskCreate(&weight_task, "weight_task", 4096, NULL, 4, NULL);
 }

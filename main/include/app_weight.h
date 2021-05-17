@@ -5,6 +5,8 @@
 extern "C" {
 #endif
 
+#include "esp_event.h"
+#include "util.h"
 #include <stdbool.h>
 
 #define WEIGHT_TASK_BUFFER_SIZE 100
@@ -77,12 +79,20 @@ typedef struct {
     uint32_t period_cnt;
 
     int pir_level;
+
+    esp_event_loop_handle_t evt_loop;
 } weight_task_cb;
 
-void app_weight_main(void);
+typedef struct {
+    rawdata_eventid eventid;
+    int weight_g;
+    int pir_val;
+} weight_take_photo_event_t;
+
+void app_weight_main(esp_event_loop_handle_t event_loop);
 
 /**
- * @brief Get calculated weight. weight = adc * weight_coefficeint. unit: mg.
+ * @brief Get calculated weight. weight = adc * weight_coefficeint. unit: g.
  *
  * @param adc[in] adc value.
  * @param weight_coefficeint[in] coefficeint.
@@ -90,6 +100,13 @@ void app_weight_main(void);
  * @retval weight
  */
 float weight_calculate(float adc, float weight_coefficeint);
+
+/**
+ * @brief Get the latest weight. unit: g.
+ *
+ * @retval weight
+ */
+int weight_get_latest(void);
 
 #ifdef __cplusplus
 }

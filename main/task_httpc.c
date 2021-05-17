@@ -7,10 +7,14 @@
 #include "esp_log.h"
 
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 #include "include/app_camera.h"
+#include "include/app_weight.h"
 #include "include/app_wifi.h"
+#include "include/board_driver.h"
+#include "include/event.h"
 #include "include/task_httpc.h"
 #include "include/util.h"
 
@@ -24,6 +28,9 @@
 
 typedef struct {
     esp_event_loop_handle_t evt_loop;
+    bool weight_event_update;
+    weight_take_photo_event_t weight_take_photo_evt;
+    SemaphoreHandle_t data_mutex;
 } httpc_task_config_t;
 
 static httpc_task_config_t task_conf;
@@ -33,13 +40,37 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt);
 static void http_post_photo(esp_http_client_handle_t client, char *json_url_val,
                             int json_url_val_len, time_t *timestamp);
 static void http_post_raw(esp_http_client_handle_t client, char *json_url_val,
-                          uint32_t weight, bool pir, time_t timestamp);
-static void http_post_data(void);
+                          time_t timestamp,
+                          weight_take_photo_event_t *take_photo_event);
+static void http_post_data(weight_take_photo_event_t *take_photo_event);
 static void httpc_task(void *pvParameter);
 
 static esp_err_t esp_err_print(esp_err_t err, const char *func, uint32_t line) {
     ESP_LOGE(TAG, "err:%s %s:L%d", esp_err_to_name(err), func, line);
     return err;
+}
+
+static void httpc_loop_event_handler(void *arg, esp_event_base_t base,
+                                     int32_t event_id, void *event_data) {
+
+    xSemaphoreTake(task_conf.data_mutex, portMAX_DELAY);
+    switch (event_id) {
+    case LULUPET_EVENT_TAKE_PHOTO:
+        memcpy(&task_conf.weight_take_photo_evt,
+               (weight_take_photo_event_t *)event_data,
+               sizeof(weight_take_photo_event_t));
+        ESP_LOGW(
+            TAG,
+            "weight_take_photo_event recv: weight[%d g] pir[%d] eventid[%d]",
+            task_conf.weight_take_photo_evt.weight_g,
+            task_conf.weight_take_photo_evt.pir_val,
+            task_conf.weight_take_photo_evt.eventid);
+        task_conf.weight_event_update = true;
+        break;
+    default:
+        break;
+    }
+    xSemaphoreGive(task_conf.data_mutex);
 }
 
 static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
@@ -255,7 +286,8 @@ http_post_photo_end:
 }
 
 static void http_post_raw(esp_http_client_handle_t client, char *json_url_val,
-                          uint32_t weight, bool pir, time_t timestamp) {
+                          time_t timestamp,
+                          weight_take_photo_event_t *take_photo_event) {
     int client_wr_len;
     int content_length;
     esp_err_t err;
@@ -268,9 +300,10 @@ static void http_post_raw(esp_http_client_handle_t client, char *json_url_val,
     }
 
     snprintf(post_data_raw, HTTP_POST_RAW_DATA_LEN,
-             "lid=%s&token=%s&weight=%u&pir=%d&pic=%s&tt=%ld",
-             app_wifi_get_lid(), app_wifi_get_token(), weight, pir,
-             json_url_val, timestamp);
+             "lid=%s&token=%s&eventid=%d&weight=%u&pir=%d&pic=%s&tt=%ld",
+             app_wifi_get_lid(), app_wifi_get_token(),
+             take_photo_event->eventid, take_photo_event->weight_g,
+             take_photo_event->pir_val, json_url_val, timestamp);
     ESP_LOGI(TAG, "post data:\n%s", post_data_raw);
 
     esp_http_client_set_url(client, HTTP_RAW_URL);
@@ -336,7 +369,7 @@ http_post_raw_end:
     }
 }
 
-static void http_post_data(void) {
+static void http_post_data(weight_take_photo_event_t *take_photo_event) {
 #define JSON_URL_VAL_LEN 256
 
     ESP_LOGI(TAG, "Free Heap Internal is:  %d Byte",
@@ -364,8 +397,8 @@ static void http_post_data(void) {
 
     time_t unix_timestamp;
     http_post_photo(client, json_url_val, JSON_URL_VAL_LEN, &unix_timestamp);
-    vTaskDelay(pdMS_TO_TICKS(100));
-    http_post_raw(client, json_url_val, 1230, 1, unix_timestamp);
+    // vTaskDelay(pdMS_TO_TICKS(100));
+    http_post_raw(client, json_url_val, unix_timestamp, take_photo_event);
 
     esp_http_client_cleanup(client);
     ESP_LOGI(TAG, "http client cleanup");
@@ -375,6 +408,12 @@ static void http_post_data(void) {
 static void httpc_task(void *pvParameter) {
     httpc_task_config_t *conf = (httpc_task_config_t *)pvParameter;
 
+    task_conf.data_mutex = xSemaphoreCreateMutex();
+    esp_event_handler_register_with(conf->evt_loop, LULUPET_EVENT_BASE,
+                                    ESP_EVENT_ANY_ID, httpc_loop_event_handler,
+                                    NULL);
+
+#if 1 // for test
     int i = 0;
     while (i < 1) {
         ESP_LOGI(TAG, "checking WiFi status");
@@ -384,16 +423,31 @@ static void httpc_task(void *pvParameter) {
             continue;
         }
         ESP_LOGI(TAG, "start to upload photo");
-        http_post_data();
+        weight_take_photo_event_t event;
+        event.eventid = RAWDATA_EVENTID_TEST;
+        event.pir_val = board_get_pir_status();
+        event.weight_g = weight_get_latest();
+        http_post_data(&event);
         // capture_photo_only();
         ESP_LOGI(TAG, "http post data test : %d ok", i);
         i++;
     }
-
-    ESP_LOGI(TAG, "end");
+#endif
 
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(HTTPC_TASK_PERIOD_MS));
+        if (pdTRUE == xSemaphoreTake(task_conf.data_mutex, portMAX_DELAY)) {
+            if (task_conf.weight_event_update) {
+                if (!app_wifi_check_connect(1000)) {
+                    ESP_LOGE(TAG, "wifi disconnect");
+                    ESP_LOGW(TAG, "TODO: save photo into ring buffer");
+                } else {
+                    http_post_data(&task_conf.weight_take_photo_evt);
+                }
+                task_conf.weight_event_update = false;
+            }
+            xSemaphoreGive(task_conf.data_mutex);
+        }
     }
 }
 
