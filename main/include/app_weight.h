@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 
+#include "util.h"
 #include <stdbool.h>
 
 #define WEIGHT_TASK_BUFFER_SIZE 100
@@ -79,10 +80,16 @@ typedef struct {
     int pir_level;
 } weight_task_cb;
 
+typedef struct {
+    rawdata_eventid eventid;
+    int weight_g;
+    int pir_val;
+} weight_take_photo_event_t;
+
 void app_weight_main(void);
 
 /**
- * @brief Get calculated weight. weight = adc * weight_coefficeint. unit: mg.
+ * @brief Get calculated weight. weight = adc * weight_coefficeint. unit: g.
  *
  * @param adc[in] adc value.
  * @param weight_coefficeint[in] coefficeint.
@@ -90,6 +97,13 @@ void app_weight_main(void);
  * @retval weight
  */
 float weight_calculate(float adc, float weight_coefficeint);
+
+/**
+ * @brief Get the latest weight. unit: g.
+ *
+ * @retval weight
+ */
+int weight_get_latest(void);
 
 #ifdef __cplusplus
 }

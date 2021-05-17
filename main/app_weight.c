@@ -284,6 +284,8 @@ float weight_calculate(float adc, float weight_coefficeint) {
     return adc * weight_coefficeint;
 }
 
+int weight_get_latest(void) { return (int)w_task_cb.now_weight; }
+
 void app_weight_main(void) {
     ESP_LOGD(TAG, "app_weight_main start");
 
