@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 
+#include "esp_event.h"
 #include "util.h"
 #include <stdbool.h>
 
@@ -78,6 +79,8 @@ typedef struct {
     uint32_t period_cnt;
 
     int pir_level;
+
+    esp_event_loop_handle_t evt_loop;
 } weight_task_cb;
 
 typedef struct {
@@ -86,7 +89,7 @@ typedef struct {
     int pir_val;
 } weight_take_photo_event_t;
 
-void app_weight_main(void);
+void app_weight_main(esp_event_loop_handle_t event_loop);
 
 /**
  * @brief Get calculated weight. weight = adc * weight_coefficeint. unit: g.
