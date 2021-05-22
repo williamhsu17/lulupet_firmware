@@ -22,8 +22,8 @@
 QueueHandle_t led_cmd_que = NULL;
 
 static char *led_cmd_type[] = {
-    "off",     "w_solid", "r_solid", "b_solid",
-    "g_solid", "r_1Hz",   "g_1Hz",   "b_1Hz",
+    "off",     "w_solid", "r_solid", "g_solid",
+    "b_solid", "r_1Hz",   "g_1Hz",   "b_1Hz",
 };
 
 static void led_task(void *pvParameter) {
