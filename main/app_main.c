@@ -22,17 +22,19 @@
  * SOFTWARE.
  */
 
-//#include "app_camera.h"
-#include "app_cmd.h"
-#include "app_key.h"
-#include "app_led.h"
-#include "app_weight.h"
-#include "app_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
+
+//#include "include/app_camera.h"
+#include "include/app_cmd.h"
+#include "include/app_key.h"
+#include "include/app_led.h"
+#include "include/app_weight.h"
+#include "include/app_wifi.h"
 #include "include/board_driver.h"
+#include "include/nvs_op.h"
+#include "include/timer_tick.h"
 #include "include/util.h"
-#include "timer_tick.h"
 
 #define TAG "app_main"
 
@@ -61,6 +63,8 @@ void app_main() {
     board_init();
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     ESP_ERROR_CHECK(event_loop_init());
+    ESP_ERROR_CHECK(nvs_init());
+    ESP_ERROR_CHECK(nvs_cali_init());
     timer_tick_init();
 
 #if (FUNC_CMD_TASK)

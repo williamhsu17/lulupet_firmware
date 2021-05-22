@@ -283,7 +283,6 @@ bool app_wifi_check_connect(uint32_t wait_ms) {
 void app_wifi_main(esp_event_loop_handle_t event_loop) {
     ESP_LOGI(TAG, "start connect process");
 
-    nvs_init();
     if (!nvs_read_wifichecked()) {
         blufi_start(event_loop);
     } else {
