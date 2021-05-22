@@ -1,17 +1,19 @@
-#include "app_cmd.h"
 #include "argtable3/argtable3.h"
 #include "driver/uart.h"
 #include "esp_console.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_vfs_dev.h"
+#include "linenoise/linenoise.h"
+#include "sys/queue.h"
+
+#include <stdio.h>
+#include <string.h>
+
+#include "app_cmd.h"
 #include "include/app_weight.h"
 #include "include/board_driver.h"
 #include "include/util.h"
-#include "linenoise/linenoise.h"
-#include "sys/queue.h"
-#include <stdio.h>
-#include <string.h>
 
 #define TAG "cmd"
 
@@ -64,6 +66,7 @@ static int cmd_led_set(int argc, char **argv);
 static int cmd_weight_condition_set(int argc, char **argv);
 #endif
 static int cmd_weight_get_param(int argc, char **argv);
+static int cmd_weight_get_val(int argc, char **argv);
 static int cmd_key_status(int argc, char **argv);
 static int cmd_pir_pwr(int argc, char **argv);
 static int cmd_pir_status(int argc, char **argv);
@@ -208,17 +211,12 @@ static int cmd_weight_get_param(int argc, char **argv) {
 
     return 0;
 }
-static int cmd_weight_get_val(int argc, char **argv) { 
 
+static int cmd_weight_get_val(int argc, char **argv) {
     PARSE_ARG(cmd_weight_get_val_args);
 
-    if (cmd_weight_get_val_args.repeat == 0 ) {
-        printf("param err");
-        goto cmd_weight_get_val_err;
-    }
-
-    if (cmd_weight_get_val_args.repeat->ival[0] < 1 || 
-        cmd_weight_get_val_args.repeat->ival[0] > 255 ) {
+    if (cmd_weight_get_val_args.repeat->ival[0] < 1 ||
+        cmd_weight_get_val_args.repeat->ival[0] > 255) {
         printf("repeat <1...255>\n");
         goto cmd_weight_get_val_err;
     }
@@ -226,7 +224,8 @@ static int cmd_weight_get_val(int argc, char **argv) {
     float adc;
     float mg;
 
-    esp_err_t err = board_get_weight((uint8_t)cmd_weight_get_val_args.repeat->ival[0], &adc, &mg);
+    esp_err_t err = board_get_weight(
+        (uint8_t)cmd_weight_get_val_args.repeat->ival[0], &adc, &mg);
 
     if (err == ESP_OK) {
         printf("adc: %.3f\n", adc);
@@ -262,7 +261,8 @@ static esp_err_t register_manufacture_command(void) {
         arg_str1("l", "weight_get_param", "<1>", "weight list parameters");
     cmd_weight_get_param_args.end = arg_end(1);
 
-    cmd_weight_get_val_args.repeat = arg_int0("r", "repeat", "<1...255>", "adc repeat time");
+    cmd_weight_get_val_args.repeat =
+        arg_int1("r", "repeat", "<1...255>", "adc repeat time");
     cmd_weight_get_val_args.end = arg_end(1);
 
     cmd_pir_pwr_args.en = arg_int0("e", "enable", "<0|1>", "enable pir");
