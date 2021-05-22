@@ -12,7 +12,7 @@ extern "C" {
 #define WEIGHT_TASK_BUFFER_SIZE 100
 #define WEIGHT_ACTIVE_VAL 200.0 // unit:g
 #define WEIGHT_CAT_VAL 2000.0   // unit:g
-#define WEIGHT_COEFFICIENT 20000.0 / 4096.0
+#define WEIGHT_COEFFICIENT 30000.0 / 4096.0
 #define WEIGHT_STANDBY_PERIOD 10     // ms
 #define WEIGHT_JUMP_PERIOD 1000      // ms
 #define WEIGHT_BIGJUMP_PERIOD 1000   // ms
