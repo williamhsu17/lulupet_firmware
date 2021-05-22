@@ -30,6 +30,18 @@ enum weight_task_fsm {
     WEIGHT_TASK_STAT_POSTEVENT,
 };
 
+typedef struct { // range_floor <= range < range_ceiling
+    uint32_t range_floor;
+    uint32_t range_ceiling;
+    float slope;
+    float offset;
+} weight_cali_val;
+
+typedef struct { // range_floor <= range < range_ceiling
+    uint8_t cali_val_num;
+    weight_cali_val cali_val[10];
+} weight_cali_cb;
+
 typedef struct {
     // weight state machine
     enum weight_task_fsm now_stat;
@@ -80,6 +92,9 @@ typedef struct {
 
     int pir_level;
 
+    SemaphoreHandle_t data_mutex;
+    weight_cali_cb cali_cb;
+
     esp_event_loop_handle_t evt_loop;
 } weight_task_cb;
 
@@ -107,6 +122,30 @@ float weight_calculate(float adc, float weight_coefficeint);
  * @retval weight
  */
 int weight_get_latest(void);
+
+/**
+ * @brief Set the calibrated value.
+ *
+ * @param range_floor[in] calculated range of floor.
+ * @param range_ceiling[in] calculated range of ceiling.
+ * @param slope[in] calculated slope.
+ * @param offset[in] calculated offset.
+ *
+ * @retval none
+ */
+void weight_set_cali_val(uint32_t range_floor, uint32_t range_ceiling,
+                         float slope, float offset);
+
+/**
+ * @brief List the weight calibated value.
+ *
+ * @retval none
+ */
+void weight_list_cali_val(void);
+
+int weight_clear_cali_val(void);
+
+int weight_save_cali_val(void);
 
 #ifdef __cplusplus
 }

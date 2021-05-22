@@ -262,6 +262,8 @@ static void weight_task(void *pvParameter) {
     w_task_cb.jump_chk = WEIGHT_JUMP_CHECK_TIMES;
     w_task_cb.postevnet_chk = WEIGHT_POSTEVENT_CHECK_TIMES;
 
+    w_task_cb.data_mutex = xSemaphoreCreateMutex();
+
     for (;;) {
         // measure weight
         weight_get();
@@ -306,6 +308,46 @@ float weight_calculate(float adc, float weight_coefficeint) {
 }
 
 int weight_get_latest(void) { return (int)w_task_cb.now_weight; }
+
+void weight_set_cali_val(uint32_t range_floor, uint32_t range_ceiling,
+                         float slope, float offset) {
+    ESP_LOGD(TAG, "range_floor: %d", range_floor);
+    ESP_LOGD(TAG, "range_ceilling: %d", range_ceiling);
+    ESP_LOGD(TAG, "slope: %.3f", slope);
+    ESP_LOGD(TAG, "offset: %.3f", offset);
+    xSemaphoreTake(w_task_cb.data_mutex, portMAX_DELAY);
+    weight_cali_val *cali_val =
+        &w_task_cb.cali_cb.cali_val[w_task_cb.cali_cb.cali_val_num++];
+    cali_val->range_floor = range_floor;
+    cali_val->range_ceiling = range_ceiling;
+    cali_val->slope = slope;
+    cali_val->offset = offset;
+    xSemaphoreGive(w_task_cb.data_mutex);
+    weight_list_cali_val();
+}
+
+void weight_list_cali_val(void) {
+    xSemaphoreTake(w_task_cb.data_mutex, portMAX_DELAY);
+    if (w_task_cb.cali_cb.cali_val_num == 0) {
+        ESP_LOGW(TAG, "weight calibration data is empty");
+        return;
+    }
+
+    char range_str[32];
+    char formula_str[32];
+
+    for (uint8_t i = 0; i < w_task_cb.cali_cb.cali_val_num; ++i) {
+        weight_cali_val *cali_val = &w_task_cb.cali_cb.cali_val[i];
+        snprintf(range_str, sizeof(range_str), "%d <= x <= %d",
+                 cali_val->range_floor, cali_val->range_ceiling);
+        snprintf(formula_str, sizeof(formula_str), "\"y= %.3f * x + (%.3f)\"",
+                 cali_val->slope, cali_val->offset);
+
+        // printf("weight_cali[%d]: %32s %32s\n", i, range_str, formula_str);
+        ESP_LOGI(TAG, "weight_cali[%d]: %32s %32s", i, range_str, formula_str);
+    }
+    xSemaphoreGive(w_task_cb.data_mutex);
+}
 
 void app_weight_main(esp_event_loop_handle_t event_loop) {
     ESP_LOGD(TAG, "app_weight_main start");
