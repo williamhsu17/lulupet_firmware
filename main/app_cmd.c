@@ -59,6 +59,15 @@ struct {
     struct arg_end *end;
 } cmd_weight_get_val_args;
 
+struct {
+    struct arg_str *cmd;
+    struct arg_int *range_floor;
+    struct arg_int *range_ceiling;
+    struct arg_int *slope;
+    struct arg_int *offset;
+    struct arg_end *end;
+} cmd_weight_set_cali_args;
+
 extern weight_task_cb w_task_cb;
 
 static int cmd_led_set(int argc, char **argv);
@@ -231,6 +240,52 @@ cmd_weight_get_val_err:
     return -1;
 }
 
+static int cmd_weight_set_cali(int argc, char **argv) {
+    PARSE_ARG(cmd_weight_set_cali_args);
+
+    // <set|list|list_nvs|save|clear>
+    if (strcmp(cmd_weight_set_cali_args.cmd->sval[0], "set") == 0) {
+        if (cmd_weight_set_cali_args.range_floor->count != 1 ||
+            cmd_weight_set_cali_args.range_ceiling->count != 1 ||
+            cmd_weight_set_cali_args.offset->count != 1 ||
+            cmd_weight_set_cali_args.slope->count != 1) {
+            arg_print_glossary(stderr, (void **)&cmd_weight_set_cali_args,
+                               NULL);
+            goto cmd_weight_set_cali_err;
+        }
+        ESP_LOGD(TAG, "range_floor: %d",
+                 cmd_weight_set_cali_args.range_floor->ival[0]);
+        ESP_LOGD(TAG, "range_ceilling: %d",
+                 cmd_weight_set_cali_args.range_ceiling->ival[0]);
+        ESP_LOGD(TAG, "slope: %.3f",
+                 1.0 * cmd_weight_set_cali_args.slope->ival[0] / 1000.0);
+        ESP_LOGD(TAG, "offset: %.3f",
+                 1.0 * cmd_weight_set_cali_args.offset->ival[0] / 1000.0);
+        weight_set_cali_val(
+            cmd_weight_set_cali_args.range_floor->ival[0],
+            cmd_weight_set_cali_args.range_ceiling->ival[0],
+            1.0 * cmd_weight_set_cali_args.slope->ival[0] / 1000.0,
+            1.0 * cmd_weight_set_cali_args.offset->ival[0] / 1000.0);
+    } else if (strcmp(cmd_weight_set_cali_args.cmd->sval[0], "list") == 0) {
+        weight_list_cali_val();
+    } else if (strcmp(cmd_weight_set_cali_args.cmd->sval[0], "list_nvs") == 0) {
+        // TODO: Read From NVS and list
+    } else if (strcmp(cmd_weight_set_cali_args.cmd->sval[0], "save") == 0) {
+        // TODO: Save calibarion data into NVS
+    } else if (strcmp(cmd_weight_set_cali_args.cmd->sval[0], "clear") == 0) {
+        // TODO: Remove calibarion data from NVS
+    } else {
+        arg_print_glossary(stderr, (void **)&cmd_weight_set_cali_args, NULL);
+        goto cmd_weight_set_cali_err;
+    }
+
+    return 0;
+
+cmd_weight_set_cali_err:
+    arg_print_errors(stderr, cmd_weight_set_cali_args.end, argv[0]);
+    return -1;
+}
+
 static esp_err_t register_manufacture_command(void) {
     cmd_led_set_args.led_type =
         arg_str1("t", "led_type", "<w|r|g|b|IR|W>", "led type");
@@ -252,6 +307,19 @@ static esp_err_t register_manufacture_command(void) {
     cmd_weight_get_val_args.repeat =
         arg_int1("r", "repeat", "<1...255>", "adc repeat time");
     cmd_weight_get_val_args.end = arg_end(1);
+
+    cmd_weight_set_cali_args.cmd =
+        arg_str1("c", "weight set clibration", "<set|list|list_nvs|save|clear>",
+                 "weight calibration commands");
+    cmd_weight_set_cali_args.range_floor =
+        arg_int0("d", "range_floor", "<int>", "calculated range of floor");
+    cmd_weight_set_cali_args.range_ceiling =
+        arg_int0("u", "range_ceiling", "<int>", "calculated range of ceiling");
+    cmd_weight_set_cali_args.slope =
+        arg_int0("s", "slope", "<int>", "calculated slope");
+    cmd_weight_set_cali_args.offset =
+        arg_int0("o", "offset", "<int>", "calculated offset");
+    cmd_weight_set_cali_args.end = arg_end(5);
 
     cmd_pir_pwr_args.en = arg_int1("e", "enable", "<0|1>", "enable pir");
     cmd_pir_pwr_args.end = arg_end(1);
@@ -286,6 +354,13 @@ static esp_err_t register_manufacture_command(void) {
             .hint = NULL,
             .func = &cmd_weight_get_val,
             .argtable = &cmd_weight_get_val_args,
+        },
+        {
+            .command = "weight_set_cali",
+            .help = "weight set calibration",
+            .hint = NULL,
+            .func = &cmd_weight_set_cali,
+            .argtable = &cmd_weight_set_cali_args,
         },
         {
             .command = "key_status",
