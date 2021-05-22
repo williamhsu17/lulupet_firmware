@@ -116,12 +116,6 @@ static int cmd_led_set(int argc, char **argv) {
 
     PARSE_ARG(cmd_led_set_args);
 
-    if (cmd_led_set_args.led_type->count == 0 ||
-        cmd_led_set_args.en->count == 0) {
-        printf("param err");
-        goto cmd_led_set_err;
-    }
-
     if (cmd_led_set_args.en->ival[0] != 0 &&
         cmd_led_set_args.en->ival[0] != 1) {
         printf("en <0|1>\n");
@@ -246,7 +240,7 @@ cmd_weight_get_val_err:
 static esp_err_t register_manufacture_command(void) {
     cmd_led_set_args.led_type =
         arg_str1("t", "led_type", "<w|r|g|b|IR|W>", "led type");
-    cmd_led_set_args.en = arg_int0("e", "enable", "<0|1>", "enable led");
+    cmd_led_set_args.en = arg_int1("e", "enable", "<0|1>", "enable led");
     cmd_led_set_args.end = arg_end(2);
 
 #if (FUNC_WEIGHT_FAKE)
