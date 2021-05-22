@@ -50,12 +50,12 @@ esp_err_t board_set_rgb_led(bool r, bool g, bool b);
  *
  * @param repeat[in] grab adc repeat times
  * @param adc[out] adc value
- * @param mg[out] calculated weight. unit: mg
+ * @param g[out] calculated weight. unit: g
  *
  * @retval ESP_OK: get successful
  * @retval other: failed
  */
-esp_err_t board_get_weight(uint8_t repeat, float *adc, float *mg);
+esp_err_t board_get_weight(uint8_t repeat, float *adc, float *g);
 
 /**
  * @brief Set pir power (IO33) status

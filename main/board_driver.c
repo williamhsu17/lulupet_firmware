@@ -550,7 +550,7 @@ esp_err_t board_set_rgb_led(bool r, bool g, bool b) {
     return err;
 }
 
-esp_err_t board_get_weight(uint8_t repeat, float *adc, float *mg) {
+esp_err_t board_get_weight(uint8_t repeat, float *adc, float *g) {
     unsigned int adc_tmp;
     unsigned int adc_sum = 0;
     esp_err_t err = ESP_OK;
@@ -566,7 +566,7 @@ esp_err_t board_get_weight(uint8_t repeat, float *adc, float *mg) {
         *adc = (1.0 * adc_sum) / (1.0 * repeat);
     }
 
-    *mg = weight_calculate(*adc, WEIGHT_COEFFICIENT);
+    *g = weight_calculate(*adc, WEIGHT_COEFFICIENT);
 
     return err;
 }

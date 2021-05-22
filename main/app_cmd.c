@@ -219,17 +219,17 @@ static int cmd_weight_get_val(int argc, char **argv) {
     }
 
     float adc;
-    float mg;
+    float g;
 
     esp_err_t err = board_get_weight(
-        (uint8_t)cmd_weight_get_val_args.repeat->ival[0], &adc, &mg);
+        (uint8_t)cmd_weight_get_val_args.repeat->ival[0], &adc, &g);
 
     if (err == ESP_OK) {
         printf("adc: %.3f\n", adc);
-        printf("weight: %.3f mg\n", mg);
+        printf("weight: %.3f g\n", g);
     } else {
         printf("adc: %.3f\n", adc);
-        printf("weight: %.3f mg\n", mg);
+        printf("weight: %.3f g\n", g);
         printf("err: %s\n", esp_err_to_name(err));
     }
 
