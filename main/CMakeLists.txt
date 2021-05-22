@@ -15,6 +15,7 @@ set(
   "board_driver.c"
   "task_httpc.c"
   "timer_tick.c"
+  "nvs_op.c"
 )
 set(
   COMPONENT_ADD_INCLUDEDIRS 
