@@ -21,6 +21,7 @@ extern "C" {
 #define WEIGHT_JUMP_TO_BIGJUMP_CHECK_TIMES 4
 #define WEIGHT_JUMP_CHECK_TIMES 25
 #define WEIGHT_POSTEVENT_CHECK_TIMES 1
+#define WEIGHT_CALI_DATA_BUF 10
 
 enum weight_task_fsm {
     WEIGHT_TASK_STAT_START = 0,
@@ -39,7 +40,7 @@ typedef struct { // range_floor <= range < range_ceiling
 
 typedef struct { // range_floor <= range < range_ceiling
     uint8_t cali_val_num;
-    weight_cali_val cali_val[10];
+    weight_cali_val cali_val[WEIGHT_CALI_DATA_BUF];
 } weight_cali_cb;
 
 typedef struct {
@@ -104,8 +105,6 @@ typedef struct {
     int pir_val;
 } weight_take_photo_event_t;
 
-void app_weight_main(esp_event_loop_handle_t event_loop);
-
 /**
  * @brief Get calculated weight. weight = adc * weight_coefficeint. unit: g.
  *
@@ -137,15 +136,50 @@ void weight_set_cali_val(uint32_t range_floor, uint32_t range_ceiling,
                          float slope, float offset);
 
 /**
- * @brief List the weight calibated value.
+ * @brief List the weight calibated value in the ram.
  *
  * @retval none
  */
-void weight_list_cali_val(void);
+void weight_list_cali_val_ram(void);
 
-int weight_clear_cali_val(void);
+/**
+ * @brief List the weight calibated value in the ram.
+ *
+ * @param range_floor[in] Would like to display structure of weight_cali_cb.
+ *
+ * @retval none
+ */
+void weight_list_cali_val(weight_cali_cb *cb);
 
-int weight_save_cali_val(void);
+/**
+ * @brief Load weight calibration data from nvs into ram
+ *
+ * @retval esp_err_t
+ */
+esp_err_t weight_load_nvs_cali_val(void);
+
+/**
+ * @brief Clear weight calibration data at nvs and ram
+ *
+ * @retval esp_err_t
+ */
+esp_err_t weight_clear_nvs_cali_val(void);
+
+/**
+ * @brief Save weight calibration data from ram into nvs
+ *
+ * @retval esp_err_t
+ */
+esp_err_t weight_save_nvs_cali_val(void);
+
+/**
+ * @brief Start weight_task service
+ *
+ * @param event_loop[in] esp32 event loop handler.
+ *
+ * @retval none
+ */
+void app_weight_main(esp_event_loop_handle_t event_loop);
 
 #ifdef __cplusplus
 }
