@@ -76,11 +76,6 @@ static int cmd_pir_pwr(int argc, char **argv) {
 
     PARSE_ARG(cmd_pir_pwr_args);
 
-    if (cmd_pir_pwr_args.en->count == 0) {
-        printf("param err");
-        goto cmd_pir_pwr_err;
-    }
-
     if (cmd_pir_pwr_args.en->ival[0] != 0 &&
         cmd_pir_pwr_args.en->ival[0] != 1) {
         printf("en <0|1>\n");
@@ -259,7 +254,7 @@ static esp_err_t register_manufacture_command(void) {
         arg_int1("r", "repeat", "<1...255>", "adc repeat time");
     cmd_weight_get_val_args.end = arg_end(1);
 
-    cmd_pir_pwr_args.en = arg_int0("e", "enable", "<0|1>", "enable pir");
+    cmd_pir_pwr_args.en = arg_int1("e", "enable", "<0|1>", "enable pir");
     cmd_pir_pwr_args.end = arg_end(1);
 
     const esp_console_cmd_t cmds[] = {
