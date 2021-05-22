@@ -62,7 +62,7 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event);
 static void set_led_cmd(unsigned int led_cmd_load);
 static void sntp_obtain_time(void);
 static void sntp_check(void);
-static void snpt_time_check(void);
+static void sntp_time_check(void);
 
 #if 0 // unused
 static esp_err_t esp_err_print(esp_err_t err, const char *func, uint32_t line) {
@@ -171,7 +171,7 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event) {
     return ESP_OK;
 }
 
-static void snpt_time_check(void) {
+static void sntp_time_check(void) {
     time_t now;
     struct tm timeinfo;
     time(&now);
@@ -258,7 +258,7 @@ static void wifi_start(esp_event_loop_handle_t event_loop) {
     wifi_check_connect(WIFI_CONN_CHK_MS, WIFI_CONN_RETRY);
     set_led_cmd(LED_GREEN_SOLID);
     ESP_LOGI(TAG, "connected to AP");
-    snpt_time_check();
+    sntp_time_check();
     ESP_LOGI(TAG, "Update time from SNTP");
 }
 
