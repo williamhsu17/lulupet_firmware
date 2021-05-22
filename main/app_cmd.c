@@ -78,7 +78,7 @@ static int cmd_pir_pwr(int argc, char **argv) {
 
     if (cmd_pir_pwr_args.en->ival[0] != 0 &&
         cmd_pir_pwr_args.en->ival[0] != 1) {
-        printf("en <0|1>\n");
+        arg_print_glossary(stderr, (void **)&cmd_pir_pwr_args, NULL);
         goto cmd_pir_pwr_err;
     }
 
@@ -113,7 +113,7 @@ static int cmd_led_set(int argc, char **argv) {
 
     if (cmd_led_set_args.en->ival[0] != 0 &&
         cmd_led_set_args.en->ival[0] != 1) {
-        printf("en <0|1>\n");
+        arg_print_glossary(stderr, (void **)&cmd_led_set_args, NULL);
         goto cmd_led_set_err;
     }
 
@@ -129,8 +129,10 @@ static int cmd_led_set(int argc, char **argv) {
         err = board_led_ctrl(LED_TYPE_IR, (bool)cmd_led_set_args.en->ival[0]);
     else if (strcmp(cmd_led_set_args.led_type->sval[0], "W") == 0)
         err = board_led_ctrl(LED_TYPE_BD_W, (bool)cmd_led_set_args.en->ival[0]);
-    else
-        printf("led_type <w|r|g|b|IR|W>\n");
+    else {
+        arg_print_glossary(stderr, (void **)&cmd_led_set_args, NULL);
+        goto cmd_led_set_err;
+    }
 
     if (err == ESP_OK)
         printf("ok\n");
@@ -154,12 +156,6 @@ struct {
 static int cmd_weight_condition_set(int argc, char **argv) {
     PARSE_ARG(cmd_weight_condition_set_args);
 
-    if (cmd_weight_condition_set_args.condition_type->count == 0 ||
-        cmd_weight_condition_set_args.value->count == 0) {
-        printf("param err");
-        goto cmd_weight_condition_set_err;
-    }
-
     if (strcmp(cmd_weight_condition_set_args.condition_type->sval[0],
                "adc_w") == 0)
         w_task_cb.now_weight =
@@ -171,8 +167,11 @@ static int cmd_weight_condition_set(int argc, char **argv) {
     else if (strcmp(cmd_weight_condition_set_args.condition_type->sval[0],
                     "pir") == 0)
         w_task_cb.pir_level = cmd_weight_condition_set_args.value->ival[0];
-    else
-        printf("weight_condition <adc_w|ref_w|pir>\n");
+    else {
+        arg_print_glossary(stderr, (void **)&cmd_weight_condition_set_args,
+                           NULL);
+        goto cmd_weight_condition_set_err;
+    }
 
     return 0;
 
@@ -206,7 +205,7 @@ static int cmd_weight_get_val(int argc, char **argv) {
 
     if (cmd_weight_get_val_args.repeat->ival[0] < 1 ||
         cmd_weight_get_val_args.repeat->ival[0] > 255) {
-        printf("repeat <1...255>\n");
+        arg_print_glossary(stderr, (void **)&cmd_weight_get_val_args, NULL);
         goto cmd_weight_get_val_err;
     }
 
@@ -242,7 +241,7 @@ static esp_err_t register_manufacture_command(void) {
     cmd_weight_condition_set_args.condition_type = arg_str1(
         "c", "weight_condition", "<adc_w|ref_w|pir>", "weight condition type");
     cmd_weight_condition_set_args.value =
-        arg_int0("v", "value", "", "condition value");
+        arg_int1("v", "value", "", "condition value");
     cmd_weight_condition_set_args.end = arg_end(2);
 #endif
 
