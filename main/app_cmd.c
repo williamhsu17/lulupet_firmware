@@ -267,13 +267,13 @@ static int cmd_weight_set_cali(int argc, char **argv) {
             1.0 * cmd_weight_set_cali_args.slope->ival[0] / 1000.0,
             1.0 * cmd_weight_set_cali_args.offset->ival[0] / 1000.0);
     } else if (strcmp(cmd_weight_set_cali_args.cmd->sval[0], "list") == 0) {
-        weight_list_cali_val();
+        weight_list_cali_val_ram();
     } else if (strcmp(cmd_weight_set_cali_args.cmd->sval[0], "list_nvs") == 0) {
-        // TODO: Read From NVS and list
+        weight_load_nvs_cali_val();
     } else if (strcmp(cmd_weight_set_cali_args.cmd->sval[0], "save") == 0) {
-        // TODO: Save calibarion data into NVS
+        weight_save_nvs_cali_val();
     } else if (strcmp(cmd_weight_set_cali_args.cmd->sval[0], "clear") == 0) {
-        // TODO: Remove calibarion data from NVS
+        weight_clear_nvs_cali_val();
     } else {
         arg_print_glossary(stderr, (void **)&cmd_weight_set_cali_args, NULL);
         goto cmd_weight_set_cali_err;
