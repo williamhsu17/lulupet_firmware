@@ -259,7 +259,7 @@ static void weight_fsm_check_bigjump(void) {
 static void weight_fsm_goto_bigjump(void) {
     // action
     board_led_ctrl(LED_TYPE_IR, true); // turn on IR led
-    task_data.period_ms = w_task_cb.bugjump_period_ms;
+    task_data.period_ms = w_task_cb.bigjump_period_ms;
     task_data.period_cnt = 0;
     weight_post_evnet(task_data.evt_loop, w_task_cb.now_weight,
                       RAWDATA_EVENTID_CAT_IN);
@@ -277,7 +277,7 @@ static void weight_fsm_check_postevent(void) {
                      w_task_cb.ref_weight); // record adc_weight - ref_weight
         ESP_LOGI(TAG, "cat druing time: %d ms",
                  task_data.period_cnt *
-                     w_task_cb.bugjump_period_ms); // record cat during time
+                     w_task_cb.bigjump_period_ms); // record cat during time
         weight_post_evnet(task_data.evt_loop,
                           (w_task_cb.now_weight - w_task_cb.ref_weight),
                           RAWDATA_EVENTID_CAT_OUT);
@@ -307,7 +307,7 @@ static void weight_task(void *pvParameter) {
     // init conf data. TODO: load data from nvs
     w_task_cb.standby_period_ms = WEIGHT_STANDBY_PERIOD;
     w_task_cb.jump_period_ms = WEIGHT_JUMP_PERIOD;
-    w_task_cb.bugjump_period_ms = WEIGHT_BIGJUMP_PERIOD;
+    w_task_cb.bigjump_period_ms = WEIGHT_BIGJUMP_PERIOD;
     w_task_cb.postevent_period_ms = WEIGHT_POSTEVENT_PERIOD;
     w_task_cb.jump_pause_times = WEIGHT_JUMP_PAUSE_DEFAULT;
     w_task_cb.weight_pause_times = 0;

@@ -202,7 +202,7 @@ static int cmd_weight_get_param(int argc, char **argv) {
     printf("jump_pause_times: %d\n", w_task_cb.jump_pause_times);
     printf("standby_period_ms: %d\n", w_task_cb.standby_period_ms);
     printf("jump_period_ms: %d\n", w_task_cb.jump_period_ms);
-    printf("bugjump_period_ms: %d\n", w_task_cb.bugjump_period_ms);
+    printf("bigjump_period_ms: %d\n", w_task_cb.bigjump_period_ms);
     printf("postevent_period_ms: %d\n", w_task_cb.postevent_period_ms);
     printf("pir_level: %d\n", gpio_get_level(GPIO_INPUT_PIR));
 

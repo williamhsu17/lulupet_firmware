@@ -63,7 +63,7 @@ typedef struct {
     uint32_t jump_pause_times;    // param can be set by user
     uint32_t standby_period_ms;   // param can be set by user
     uint32_t jump_period_ms;      // param can be set by user
-    uint32_t bugjump_period_ms;   // param can be set by user
+    uint32_t bigjump_period_ms;   // param can be set by user
     uint32_t postevent_period_ms; // param can be set by user
 
     weight_cali_cb cali_cb; // param can be set by nvs
