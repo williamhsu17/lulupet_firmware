@@ -304,8 +304,23 @@ static void weight_task(void *pvParameter) {
 }
 
 float weight_calculate(float adc, float weight_coefficeint) {
-    // TODO: use calibration data to calculate
-    return adc * weight_coefficeint;
+    float weight = adc * weight_coefficeint;
+
+    xSemaphoreTake(w_task_cb.data_mutex, portMAX_DELAY);
+    weight = adc * weight_coefficeint;
+    if (w_task_cb.cali_cb.cali_val_num != 0) {
+        for (uint8_t i = 0; i < w_task_cb.cali_cb.cali_val_num; ++i) {
+            weight_cali_val *cali_val = &w_task_cb.cali_cb.cali_val[i];
+            if (weight > cali_val->range_floor &&
+                weight <= cali_val->range_ceiling) {
+                // y = a * x + b;
+                weight = cali_val->slope * weight + cali_val->offset;
+            }
+        }
+    }
+    xSemaphoreGive(w_task_cb.data_mutex);
+
+    return weight;
 }
 
 int weight_get_latest(void) { return (int)w_task_cb.now_weight; }
