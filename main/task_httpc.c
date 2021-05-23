@@ -1,14 +1,13 @@
-#include <string.h>
-
 #include "cJSON.h"
 #include "esp_camera.h"
 #include "esp_err.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+
+#include <string.h>
 
 #include "include/app_camera.h"
 #include "include/app_weight.h"
@@ -426,7 +425,7 @@ static void httpc_task(void *pvParameter) {
         weight_take_photo_event_t event;
         event.eventid = RAWDATA_EVENTID_TEST;
         event.pir_val = board_get_pir_status();
-        event.weight_g = weight_get_latest();
+        event.weight_g = weight_get_now_weight_int();
         http_post_data(&event);
         // capture_photo_only();
         ESP_LOGI(TAG, "http post data test : %d ok", i);
