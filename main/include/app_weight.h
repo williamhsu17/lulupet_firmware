@@ -45,38 +45,20 @@ typedef struct { // range_floor <= range < range_ceiling
 
 typedef struct {
     // weight data
-    unsigned int ring_buffer[WEIGHT_TASK_BUFFER_SIZE]; // TODO: the buffer just
-                                                       // for verifying
-    uint32_t weight_pause_times;
-    unsigned int ref_adc_sum;
-    bool ring_buffer_loop;
-    uint32_t ring_buffer_idx;
     volatile float ref_adc;
     volatile float latest_adc;
-    float weight_coefficent;
-
     volatile float ref_weight; // unit:g
     volatile float now_weight; // unit:g
+    int pir_level;
 
-    bool ref_adc_exec;
+    uint32_t weight_pause_times; // param can be set by user
+    float active_weight;         // param can be set by user
+    float cat_weight;            // param can be set by user
 
-    float active_weight; // param can be set by user
-    float cat_weight;    // param can be set by user
-
-    uint8_t jump_to_standby_num;
-    uint8_t jump_to_standby_cnt;
     uint8_t jump_to_standby_chk; // param can be set by user
-    uint8_t jump_to_bigjump_num;
-    uint8_t jump_to_bigjump_cnt;
     uint8_t jump_to_bigjump_chk; // param can be set by user
-
-    uint8_t jump_num;
-    uint8_t jump_cnt;
-    uint8_t jump_chk; // param can be set by user
-
-    uint8_t postevnet_num;
-    uint8_t postevnet_cnt;
-    uint8_t postevnet_chk; // param can be set by user
+    uint8_t jump_chk;            // param can be set by user
+    uint8_t postevnet_chk;       // param can be set by user
 
     uint32_t jump_pause_times;    // param can be set by user
     uint32_t standby_period_ms;   // param can be set by user
@@ -84,12 +66,7 @@ typedef struct {
     uint32_t bugjump_period_ms;   // param can be set by user
     uint32_t postevent_period_ms; // param can be set by user
 
-    uint32_t period_ms;
-    uint32_t period_cnt;
-
-    int pir_level;
-
-    weight_cali_cb cali_cb;
+    weight_cali_cb cali_cb; // param can be set by nvs
 } weight_task_cb;
 
 typedef struct {
