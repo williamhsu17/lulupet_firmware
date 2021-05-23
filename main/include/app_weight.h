@@ -44,10 +44,6 @@ typedef struct { // range_floor <= range < range_ceiling
 } weight_cali_cb;
 
 typedef struct {
-    // weight state machine
-    enum weight_task_fsm now_stat;
-    enum weight_task_fsm pre_stat;
-
     // weight data
     unsigned int ring_buffer[WEIGHT_TASK_BUFFER_SIZE]; // TODO: the buffer just
                                                        // for verifying

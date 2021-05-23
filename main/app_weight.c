@@ -23,6 +23,10 @@
 #define WEIGHT_JUMP_PAUSE_DEFAULT 5
 
 typedef struct {
+    // weight state machine
+    enum weight_task_fsm now_fsm;
+    enum weight_task_fsm pre_fsm;
+
     SemaphoreHandle_t cali_data_mutex;
 } weight_task_data_t;
 
@@ -166,7 +170,7 @@ static void weight_fsm_goto_standby(void) {
     w_task_cb.jump_to_bigjump_cnt = 0;
     w_task_cb.jump_to_standby_cnt = 0;
     // fsm change
-    w_task_cb.now_stat = WEIGHT_TASK_STAT_STANDBY;
+    task_data.now_fsm = WEIGHT_TASK_STAT_STANDBY;
 }
 
 static void weight_fsm_check_jump(void) {
@@ -218,7 +222,7 @@ static void weight_fsm_goto_jump(void) {
     w_task_cb.jump_num = w_task_cb.jump_chk;
     w_task_cb.jump_cnt = 0;
     // fsm change
-    w_task_cb.now_stat = WEIGHT_TASK_STAT_JUMP;
+    task_data.now_fsm = WEIGHT_TASK_STAT_JUMP;
 }
 
 static void weight_fsm_check_bigjump(void) {
@@ -238,7 +242,7 @@ static void weight_fsm_goto_bigjump(void) {
                       RAWDATA_EVENTID_CAT_IN);
 
     // fsm change
-    w_task_cb.now_stat = WEIGHT_TASK_STAT_BIGJUMP;
+    task_data.now_fsm = WEIGHT_TASK_STAT_BIGJUMP;
 }
 
 static void weight_fsm_check_postevent(void) {
@@ -265,12 +269,12 @@ static void weight_fsm_goto_postevent(void) {
     w_task_cb.postevnet_cnt = 0;
     w_task_cb.period_ms = w_task_cb.postevent_period_ms;
     // fsm change
-    w_task_cb.now_stat = WEIGHT_TASK_STAT_POSTEVENT;
+    task_data.now_fsm = WEIGHT_TASK_STAT_POSTEVENT;
 }
 
 static void weight_task(void *pvParameter) {
     // inital cb
-    w_task_cb.now_stat = w_task_cb.pre_stat = WEIGHT_TASK_STAT_START;
+    task_data.now_fsm = task_data.pre_fsm = WEIGHT_TASK_STAT_START;
     w_task_cb.ring_buffer_idx = 0;
     w_task_cb.ring_buffer_loop = false;
     w_task_cb.ref_adc_sum = 0;
@@ -297,7 +301,7 @@ static void weight_task(void *pvParameter) {
         weight_get();
 
         // state machine
-        switch (w_task_cb.now_stat) {
+        switch (task_data.now_fsm) {
         case WEIGHT_TASK_STAT_START:
         default:
             weight_fsm_check_start();
@@ -319,11 +323,11 @@ static void weight_task(void *pvParameter) {
             weight_fsm_check_postevent();
         }
 
-        if (w_task_cb.now_stat != w_task_cb.pre_stat) {
+        if (task_data.now_fsm != task_data.pre_fsm) {
             ESP_LOGW(TAG, "fsm: [%s]->[%s]",
-                     weight_fsm_name[w_task_cb.pre_stat],
-                     weight_fsm_name[w_task_cb.now_stat]);
-            w_task_cb.pre_stat = w_task_cb.now_stat;
+                     weight_fsm_name[task_data.pre_fsm],
+                     weight_fsm_name[task_data.now_fsm]);
+            task_data.pre_fsm = task_data.now_fsm;
         }
 
         vTaskDelay(w_task_cb.period_ms / portTICK_PERIOD_MS);
