@@ -45,7 +45,7 @@ static void http_post_data(weight_take_photo_event_t *take_photo_event);
 static void httpc_task(void *pvParameter);
 
 static esp_err_t esp_err_print(esp_err_t err, const char *func, uint32_t line) {
-    ESP_LOGE(TAG, "err:%s %s:L%d", esp_err_to_name(err), func, line);
+    ESP_LOGE(TAG, "err:%s %s():L%d", esp_err_to_name(err), func, line);
     return err;
 }
 

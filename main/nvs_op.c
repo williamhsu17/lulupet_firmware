@@ -25,7 +25,7 @@ static esp_err_t esp_err_print(esp_err_t esp_err, const char *file,
 
 static esp_err_t esp_err_print(esp_err_t esp_err, const char *file,
                                uint32_t line) {
-    ESP_LOGE(TAG, "err: %s %s:L%d", esp_err_to_name(esp_err), file, line);
+    ESP_LOGE(TAG, "err: %s %s():L%d", esp_err_to_name(esp_err), file, line);
     return esp_err;
 }
 
