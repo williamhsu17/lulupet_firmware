@@ -9,6 +9,7 @@ extern "C" {
 #include "util.h"
 #include <stdbool.h>
 
+#define WEIGHT_CONF_VERSION 1
 #define WEIGHT_TASK_BUFFER_SIZE 255
 #define WEIGHT_ACTIVE_VAL 200.0 // unit:g
 #define WEIGHT_CAT_VAL 2000.0   // unit:g
@@ -44,27 +45,33 @@ typedef struct { // range_floor <= range < range_ceiling
 } weight_cali_cb;
 
 typedef struct {
+    uint8_t version;
+    // standby
+    uint32_t standby_period_ms;
+    float standby_active_weight_g;
+    // jump
+    uint32_t jump_period_ms;
+    uint32_t jump_pause_times;
+    uint8_t jump_chk;
+    uint8_t jump_to_standby_chk;
+    uint8_t jump_to_bigjump_chk;
+    float jump_cat_weight_g;
+    // bigjump
+    uint32_t bigjump_period_ms;
+    // postevent
+    uint32_t postevent_period_ms;
+    uint8_t postevnet_chk;
+} weight_conf_ver1_t;
+
+typedef struct {
     // weight data
     volatile float ref_adc;
     volatile float latest_adc;
-    volatile float ref_weight; // unit:g
-    volatile float now_weight; // unit:g
+    volatile float ref_weight_g; // unit:g
+    volatile float now_weight_g; // unit:g
     int pir_level;
 
-    uint32_t weight_pause_times; // param can be set by user
-    float active_weight;         // param can be set by user
-    float cat_weight;            // param can be set by user
-
-    uint8_t jump_to_standby_chk; // param can be set by user
-    uint8_t jump_to_bigjump_chk; // param can be set by user
-    uint8_t jump_chk;            // param can be set by user
-    uint8_t postevnet_chk;       // param can be set by user
-
-    uint32_t jump_pause_times;    // param can be set by user
-    uint32_t standby_period_ms;   // param can be set by user
-    uint32_t jump_period_ms;      // param can be set by user
-    uint32_t bigjump_period_ms;   // param can be set by user
-    uint32_t postevent_period_ms; // param can be set by user
+    weight_conf_ver1_t *conf;
 
     weight_cali_cb cali_cb; // param can be set by nvs
 } weight_task_cb;
@@ -88,21 +95,21 @@ float weight_calculate(float adc, float weight_coefficeint);
 /**
  * @brief Output ref_weight weight. unit: g.
  *
- * @retval ref_weight
+ * @retval ref_weight_g
  */
 float weight_get_ref_weight(void);
 
 /**
- * @brief Output now_weight. unit: g.
+ * @brief Output now_weight_g. unit: g.
  *
- * @retval now_weight
+ * @retval now_weight_g
  */
 float weight_get_now_weight(void);
 
 /**
  * @brief Get the latest weight. unit: g.
  *
- * @retval now_weight
+ * @retval now_weight_g
  */
 int weight_get_now_weight_int(void);
 
