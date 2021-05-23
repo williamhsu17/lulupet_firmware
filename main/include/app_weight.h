@@ -9,7 +9,7 @@ extern "C" {
 #include "util.h"
 #include <stdbool.h>
 
-#define WEIGHT_TASK_BUFFER_SIZE 100
+#define WEIGHT_TASK_BUFFER_SIZE 255
 #define WEIGHT_ACTIVE_VAL 200.0 // unit:g
 #define WEIGHT_CAT_VAL 2000.0   // unit:g
 #define WEIGHT_COEFFICIENT 30000.0 / 4096.0
@@ -55,12 +55,12 @@ typedef struct {
     unsigned int ref_adc_sum;
     bool ring_buffer_loop;
     uint32_t ring_buffer_idx;
-    float ref_adc;
-    float latest_adc;
+    volatile float ref_adc;
+    volatile float latest_adc;
     float weight_coefficent;
 
-    float ref_weight; // unit:g
-    float now_weight; // unit:g
+    volatile float ref_weight; // unit:g
+    volatile float now_weight; // unit:g
 
     bool ref_adc_exec;
 
@@ -93,7 +93,6 @@ typedef struct {
 
     int pir_level;
 
-    SemaphoreHandle_t data_mutex;
     weight_cali_cb cali_cb;
 
     esp_event_loop_handle_t evt_loop;
@@ -116,11 +115,25 @@ typedef struct {
 float weight_calculate(float adc, float weight_coefficeint);
 
 /**
+ * @brief Output ref_weight weight. unit: g.
+ *
+ * @retval ref_weight
+ */
+float weight_get_ref_weight(void);
+
+/**
+ * @brief Output now_weight. unit: g.
+ *
+ * @retval now_weight
+ */
+float weight_get_now_weight(void);
+
+/**
  * @brief Get the latest weight. unit: g.
  *
- * @retval weight
+ * @retval now_weight
  */
-int weight_get_latest(void);
+int weight_get_now_weight_int(void);
 
 /**
  * @brief Set the calibrated value.
