@@ -21,6 +21,26 @@
 #define TAG "weight_task"
 
 #define WEIGHT_JUMP_PAUSE_DEFAULT 5
+#define WEIGHT_CONF_VERSION 1
+#define WEIGHT_TASK_BUFFER_SIZE 255
+#define WEIGHT_ACTIVE_VAL 200.0      // unit:g
+#define WEIGHT_CAT_VAL 2000.0        // unit:g
+#define WEIGHT_STANDBY_PERIOD 10     // ms
+#define WEIGHT_JUMP_PERIOD 1000      // ms
+#define WEIGHT_BIGJUMP_PERIOD 1000   // ms
+#define WEIGHT_POSTEVENT_PERIOD 1000 // ms
+#define WEIGHT_JUMP_TO_STANDBY_CHECK_TIMES 4
+#define WEIGHT_JUMP_TO_BIGJUMP_CHECK_TIMES 4
+#define WEIGHT_JUMP_CHECK_TIMES 25
+#define WEIGHT_POSTEVENT_CHECK_TIMES 1
+
+enum weight_task_fsm {
+    WEIGHT_TASK_STAT_START = 0,
+    WEIGHT_TASK_STAT_STANDBY,
+    WEIGHT_TASK_STAT_JUMP,
+    WEIGHT_TASK_STAT_BIGJUMP,
+    WEIGHT_TASK_STAT_POSTEVENT,
+};
 
 typedef struct {
     // weight state machine
