@@ -66,7 +66,7 @@ static void sntp_time_check(void);
 
 #if 0 // unused
 static esp_err_t esp_err_print(esp_err_t err, const char *func, uint32_t line) {
-    ESP_LOGE(TAG, "err:%s %s:L%d", esp_err_to_name(err), func, line);
+    ESP_LOGE(TAG, "err:%s %s():L%d", esp_err_to_name(err), func, line);
     return err;
 }
 #endif

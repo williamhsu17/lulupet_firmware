@@ -21,8 +21,54 @@
 #define TAG "weight_task"
 
 #define WEIGHT_JUMP_PAUSE_DEFAULT 5
+#define WEIGHT_CONF_VERSION 1
+#define WEIGHT_TASK_BUFFER_SIZE 255
+#define WEIGHT_ACTIVE_VAL 200.0      // unit:g
+#define WEIGHT_CAT_VAL 2000.0        // unit:g
+#define WEIGHT_STANDBY_PERIOD 10     // ms
+#define WEIGHT_JUMP_PERIOD 1000      // ms
+#define WEIGHT_BIGJUMP_PERIOD 1000   // ms
+#define WEIGHT_POSTEVENT_PERIOD 1000 // ms
+#define WEIGHT_JUMP_TO_STANDBY_CHECK_TIMES 4
+#define WEIGHT_JUMP_TO_BIGJUMP_CHECK_TIMES 4
+#define WEIGHT_JUMP_CHECK_TIMES 25
+#define WEIGHT_POSTEVENT_CHECK_TIMES 1
+
+enum weight_task_fsm {
+    WEIGHT_TASK_STAT_START = 0,
+    WEIGHT_TASK_STAT_STANDBY,
+    WEIGHT_TASK_STAT_JUMP,
+    WEIGHT_TASK_STAT_BIGJUMP,
+    WEIGHT_TASK_STAT_POSTEVENT,
+};
 
 typedef struct {
+    // weight state machine
+    enum weight_task_fsm now_fsm;
+    enum weight_task_fsm pre_fsm;
+
+    unsigned int ring_buffer[WEIGHT_TASK_BUFFER_SIZE]; // TODO: the buffer just
+                                                       // for verifying
+    bool ref_adc_exec;
+    unsigned int ref_adc_sum;
+    bool ring_buffer_loop;
+    uint32_t ring_buffer_idx;
+    float weight_coefficent;
+
+    uint32_t weight_pause_times;
+    uint8_t jump_num;
+    uint8_t jump_cnt;
+    uint8_t jump_to_standby_num;
+    uint8_t jump_to_standby_cnt;
+    uint8_t jump_to_bigjump_num;
+    uint8_t jump_to_bigjump_cnt;
+    uint8_t postevnet_num;
+    uint8_t postevnet_cnt;
+
+    uint32_t period_ms;
+    uint32_t period_cnt;
+
+    esp_event_loop_handle_t evt_loop;
     SemaphoreHandle_t cali_data_mutex;
 } weight_task_data_t;
 
@@ -47,6 +93,16 @@ static void weight_fsm_check_bigjump(void);
 static void weight_fsm_goto_bigjump(void);
 static void weight_fsm_check_postevent(void);
 static void weight_fsm_goto_postevent(void);
+static void weight_data_init(weight_task_data_t *data);
+static void weight_conf_init_v1(weight_conf_ver1_t *conf);
+static esp_err_t weight_conf_init(weight_task_cb *task);
+static void weight_task(void *pvParameter);
+
+static esp_err_t esp_err_print(esp_err_t esp_err, const char *file,
+                               uint32_t line) {
+    ESP_LOGE(TAG, "err: %s %s():L%d", esp_err_to_name(esp_err), file, line);
+    return esp_err;
+}
 
 static void weight_post_evnet(esp_event_loop_handle_t event_loop, float weight,
                               rawdata_eventid eventid) {
@@ -84,9 +140,9 @@ static float weight_calculate_internal(float adc, float weight_coefficeint) {
 }
 
 static void weight_get(void) {
-    if (w_task_cb.weight_pause_times) {
-        ESP_LOGI(TAG, "weight pause[%d]", w_task_cb.weight_pause_times);
-        --w_task_cb.weight_pause_times;
+    if (task_data.weight_pause_times) {
+        ESP_LOGI(TAG, "weight pause[%d]", task_data.weight_pause_times);
+        --task_data.weight_pause_times;
         return;
     }
 
@@ -95,38 +151,38 @@ static void weight_get(void) {
     if (i2c_mcp3221_readADC(I2C_MASTER_NUM, &tmp_adc) == ESP_OK) {
         // get latest adc
         w_task_cb.latest_adc = 1.0 * tmp_adc;
-        w_task_cb.now_weight = weight_calculate_internal(
-            w_task_cb.latest_adc, w_task_cb.weight_coefficent);
+        w_task_cb.now_weight_g = weight_calculate_internal(
+            w_task_cb.latest_adc, task_data.weight_coefficent);
 
         // get reference adc
-        if (w_task_cb.ref_adc_exec) {
-            w_task_cb.ref_adc_sum += tmp_adc;
+        if (task_data.ref_adc_exec) {
+            task_data.ref_adc_sum += tmp_adc;
 
-            if (w_task_cb.ring_buffer_loop) {
-                w_task_cb.ref_adc_sum -=
-                    w_task_cb.ring_buffer
-                        [w_task_cb.ring_buffer_idx]; // minus orignal value
-                w_task_cb.ring_buffer[w_task_cb.ring_buffer_idx] =
+            if (task_data.ring_buffer_loop) {
+                task_data.ref_adc_sum -=
+                    task_data.ring_buffer
+                        [task_data.ring_buffer_idx]; // minus orignal value
+                task_data.ring_buffer[task_data.ring_buffer_idx] =
                     tmp_adc; // save adc data into buffer
                 w_task_cb.ref_adc =
-                    1.0 * w_task_cb.ref_adc_sum /
+                    1.0 * task_data.ref_adc_sum /
                     (1.0 *
                      WEIGHT_TASK_BUFFER_SIZE); // calculate reference weight
             } else {
-                w_task_cb.ring_buffer[w_task_cb.ring_buffer_idx] =
+                task_data.ring_buffer[task_data.ring_buffer_idx] =
                     tmp_adc; // save adc data into buffer
-                w_task_cb.ref_adc = 1.0 * w_task_cb.ref_adc_sum /
-                                    (1.0 * (w_task_cb.ring_buffer_idx +
+                w_task_cb.ref_adc = 1.0 * task_data.ref_adc_sum /
+                                    (1.0 * (task_data.ring_buffer_idx +
                                             1)); // calculate reference weight
             }
 
-            ++w_task_cb.ring_buffer_idx;
-            if (w_task_cb.ring_buffer_idx == WEIGHT_TASK_BUFFER_SIZE) {
-                w_task_cb.ring_buffer_idx = 0;
-                w_task_cb.ring_buffer_loop = true;
+            ++task_data.ring_buffer_idx;
+            if (task_data.ring_buffer_idx == WEIGHT_TASK_BUFFER_SIZE) {
+                task_data.ring_buffer_idx = 0;
+                task_data.ring_buffer_loop = true;
             }
-            w_task_cb.ref_weight = weight_calculate_internal(
-                w_task_cb.ref_adc, w_task_cb.weight_coefficent);
+            w_task_cb.ref_weight_g = weight_calculate_internal(
+                w_task_cb.ref_adc, task_data.weight_coefficent);
         }
 
         ESP_LOGD(TAG, "now adc [%.2f] ref [%.2f]", w_task_cb.latest_adc,
@@ -134,18 +190,18 @@ static void weight_get(void) {
     } else
         ESP_LOGE(TAG, "can not read weight adc");
 #endif
-    ESP_LOGD(TAG, "now [%.2f g] ref [%.2f g]", w_task_cb.now_weight,
-             w_task_cb.ref_weight);
+    ESP_LOGD(TAG, "now [%.2f g] ref [%.2f g]", w_task_cb.now_weight_g,
+             w_task_cb.ref_weight_g);
 }
 
 static void weight_fsm_check_start(void) { weight_fsm_goto_standby(); }
 
 static void weight_fsm_check_standby(void) {
 #if (!FUNC_WEIGHT_FAKE)
-    if (w_task_cb.ring_buffer_loop) {
+    if (task_data.ring_buffer_loop) {
 #endif
-        if ((w_task_cb.now_weight - w_task_cb.ref_weight) >
-            w_task_cb.active_weight) {
+        if ((w_task_cb.now_weight_g - w_task_cb.ref_weight_g) >
+            w_task_cb.conf->standby_active_weight_g) {
             weight_fsm_goto_jump();
         }
 #if (!FUNC_WEIGHT_FAKE)
@@ -157,102 +213,103 @@ static void weight_fsm_goto_standby(void) {
     // action
     board_led_ctrl(LED_TYPE_BD_W, false); // turn off W led
     board_led_ctrl(LED_TYPE_IR, false);   // turn off IR led
-    w_task_cb.weight_pause_times = 0;
-    w_task_cb.period_ms = w_task_cb.standby_period_ms;
-    w_task_cb.ref_adc_exec = true;
-    w_task_cb.ring_buffer_loop = false;
-    w_task_cb.ring_buffer_idx = 0;
-    w_task_cb.ref_adc_sum = 0;
-    w_task_cb.jump_to_bigjump_cnt = 0;
-    w_task_cb.jump_to_standby_cnt = 0;
+    task_data.weight_pause_times = 0;
+    task_data.period_ms = w_task_cb.conf->standby_period_ms;
+    task_data.ref_adc_exec = true;
+    task_data.ref_adc_sum = 0;
+    task_data.ring_buffer_loop = false;
+    task_data.ring_buffer_idx = 0;
+
     // fsm change
-    w_task_cb.now_stat = WEIGHT_TASK_STAT_STANDBY;
+    task_data.now_fsm = WEIGHT_TASK_STAT_STANDBY;
 }
 
 static void weight_fsm_check_jump(void) {
-    if (!w_task_cb.weight_pause_times) {
+    if (!task_data.weight_pause_times) {
 #if (!FUNC_WEIGHT_FAKE)
         w_task_cb.pir_level = gpio_get_level(GPIO_INPUT_PIR);
 #endif
 
-        ++w_task_cb.jump_cnt;
+        ++task_data.jump_cnt;
 
-        if ((w_task_cb.now_weight - w_task_cb.ref_weight) <
-                (0.5 * w_task_cb.cat_weight) &&
+        if ((w_task_cb.now_weight_g - w_task_cb.ref_weight_g) <
+                (0.5 * w_task_cb.conf->jump_cat_weight_g) &&
             !w_task_cb.pir_level) {
-            w_task_cb.jump_to_bigjump_cnt = 0;
-            ++w_task_cb.jump_to_standby_cnt;
+            task_data.jump_to_bigjump_cnt = 0;
+            ++task_data.jump_to_standby_cnt;
             ESP_LOGI(TAG, "jump_to_standby_cnt: %d",
-                     w_task_cb.jump_to_standby_cnt);
-            if (w_task_cb.jump_to_standby_cnt == w_task_cb.jump_to_standby_num)
+                     task_data.jump_to_standby_cnt);
+            if (task_data.jump_to_standby_cnt == task_data.jump_to_standby_num)
                 weight_fsm_goto_standby();
-        } else if ((w_task_cb.now_weight - w_task_cb.ref_weight) >=
-                       (0.5 * w_task_cb.cat_weight) &&
+        } else if ((w_task_cb.now_weight_g - w_task_cb.ref_weight_g) >=
+                       (0.5 * w_task_cb.conf->jump_cat_weight_g) &&
                    w_task_cb.pir_level) {
-            w_task_cb.jump_to_standby_cnt = 0;
-            ++w_task_cb.jump_to_bigjump_cnt;
+            task_data.jump_to_standby_cnt = 0;
+            ++task_data.jump_to_bigjump_cnt;
             ESP_LOGI(TAG, "jump_to_bigjump_cnt: %d",
-                     w_task_cb.jump_to_bigjump_cnt);
-            if (w_task_cb.jump_to_bigjump_cnt == w_task_cb.jump_to_bigjump_num)
+                     task_data.jump_to_bigjump_cnt);
+            if (task_data.jump_to_bigjump_cnt == task_data.jump_to_bigjump_num)
                 weight_fsm_goto_bigjump();
         } else {
-            w_task_cb.jump_to_bigjump_cnt = 0;
-            w_task_cb.jump_to_standby_cnt = 0;
+            task_data.jump_to_bigjump_cnt = 0;
+            task_data.jump_to_standby_cnt = 0;
         }
 
-        ESP_LOGI(TAG, "jump_cnt: %d", w_task_cb.jump_cnt);
-        if (w_task_cb.jump_cnt == w_task_cb.jump_num)
+        ESP_LOGI(TAG, "jump_cnt: %d", task_data.jump_cnt);
+        if (task_data.jump_cnt == task_data.jump_num)
             weight_fsm_goto_standby();
     }
 }
 
 static void weight_fsm_goto_jump(void) {
     // action
-    w_task_cb.weight_pause_times = w_task_cb.jump_pause_times;
-    w_task_cb.period_ms = w_task_cb.jump_period_ms;
-    w_task_cb.ref_adc_exec = false;
-    w_task_cb.jump_to_standby_num = w_task_cb.jump_to_standby_chk;
-    w_task_cb.jump_to_standby_cnt = 0;
-    w_task_cb.jump_to_bigjump_num = w_task_cb.jump_to_bigjump_chk;
-    w_task_cb.jump_to_bigjump_cnt = 0;
-    w_task_cb.jump_num = w_task_cb.jump_chk;
-    w_task_cb.jump_cnt = 0;
+    task_data.weight_pause_times = w_task_cb.conf->jump_pause_times;
+    task_data.period_ms = w_task_cb.conf->jump_period_ms;
+    task_data.ref_adc_exec = false;
+    task_data.jump_to_standby_num = w_task_cb.conf->jump_to_standby_chk;
+    task_data.jump_to_standby_cnt = 0;
+    task_data.jump_to_bigjump_num = w_task_cb.conf->jump_to_bigjump_chk;
+    task_data.jump_to_bigjump_cnt = 0;
+    task_data.jump_num = w_task_cb.conf->jump_chk;
+    task_data.jump_cnt = 0;
     // fsm change
-    w_task_cb.now_stat = WEIGHT_TASK_STAT_JUMP;
+    task_data.now_fsm = WEIGHT_TASK_STAT_JUMP;
 }
 
 static void weight_fsm_check_bigjump(void) {
-    if ((w_task_cb.now_weight - w_task_cb.ref_weight) <
-        w_task_cb.active_weight) {
+    if ((w_task_cb.now_weight_g - w_task_cb.ref_weight_g) <
+        w_task_cb.conf->standby_active_weight_g) {
         weight_fsm_goto_postevent();
     }
-    ++w_task_cb.period_cnt;
+    ++task_data.period_cnt;
 }
 
 static void weight_fsm_goto_bigjump(void) {
     // action
     board_led_ctrl(LED_TYPE_IR, true); // turn on IR led
-    w_task_cb.period_ms = w_task_cb.bugjump_period_ms;
-    w_task_cb.period_cnt = 0;
-    weight_post_evnet(w_task_cb.evt_loop, w_task_cb.now_weight,
+    task_data.period_ms = w_task_cb.conf->bigjump_period_ms;
+    task_data.period_cnt = 0;
+    weight_post_evnet(task_data.evt_loop, w_task_cb.now_weight_g,
                       RAWDATA_EVENTID_CAT_IN);
 
     // fsm change
-    w_task_cb.now_stat = WEIGHT_TASK_STAT_BIGJUMP;
+    task_data.now_fsm = WEIGHT_TASK_STAT_BIGJUMP;
 }
 
 static void weight_fsm_check_postevent(void) {
-    ++w_task_cb.postevnet_cnt;
-    ESP_LOGI(TAG, "postevnet_cnt: %d", w_task_cb.postevnet_cnt);
-    if (w_task_cb.postevnet_chk == w_task_cb.postevnet_num) {
-        ESP_LOGI(TAG, "cat weight diff: %.3f g",
-                 w_task_cb.now_weight -
-                     w_task_cb.ref_weight); // record adc_weight - ref_weight
-        ESP_LOGI(TAG, "cat druing time: %d ms",
-                 w_task_cb.period_cnt *
-                     w_task_cb.bugjump_period_ms); // record cat during time
-        weight_post_evnet(w_task_cb.evt_loop,
-                          (w_task_cb.now_weight - w_task_cb.ref_weight),
+    ++task_data.postevnet_cnt;
+    ESP_LOGI(TAG, "postevnet_cnt: %d", task_data.postevnet_cnt);
+    if (task_data.postevnet_cnt == task_data.postevnet_num) {
+        ESP_LOGI(
+            TAG, "cat weight diff: %.3f g",
+            w_task_cb.now_weight_g -
+                w_task_cb.ref_weight_g); // record adc_weight - ref_weight_g
+        ESP_LOGI(
+            TAG, "cat druing time: %d ms",
+            task_data.period_cnt *
+                w_task_cb.conf->bigjump_period_ms); // record cat during time
+        weight_post_evnet(task_data.evt_loop,
+                          (w_task_cb.now_weight_g - w_task_cb.ref_weight_g),
                           RAWDATA_EVENTID_CAT_OUT);
         weight_fsm_goto_standby();
     }
@@ -261,43 +318,65 @@ static void weight_fsm_check_postevent(void) {
 static void weight_fsm_goto_postevent(void) {
     // action
     board_led_ctrl(LED_TYPE_BD_W, true); // turn on W led
-    w_task_cb.postevnet_num = w_task_cb.postevnet_chk;
-    w_task_cb.postevnet_cnt = 0;
-    w_task_cb.period_ms = w_task_cb.postevent_period_ms;
+    task_data.postevnet_num = w_task_cb.conf->postevnet_chk;
+    task_data.postevnet_cnt = 0;
+    task_data.period_ms = w_task_cb.conf->postevent_period_ms;
     // fsm change
-    w_task_cb.now_stat = WEIGHT_TASK_STAT_POSTEVENT;
+    task_data.now_fsm = WEIGHT_TASK_STAT_POSTEVENT;
+}
+
+static void weight_data_init(weight_task_data_t *data) {
+    data->now_fsm = task_data.pre_fsm = WEIGHT_TASK_STAT_START;
+    data->weight_coefficent = WEIGHT_COEFFICIENT;
+    data->cali_data_mutex = xSemaphoreCreateMutex();
+}
+
+static void weight_conf_init_v1(weight_conf_ver1_t *conf) {
+    conf->version = 1;
+    conf->standby_period_ms = WEIGHT_STANDBY_PERIOD;
+    conf->standby_active_weight_g = WEIGHT_ACTIVE_VAL;
+
+    conf->jump_period_ms = WEIGHT_JUMP_PERIOD;
+    conf->jump_pause_times = WEIGHT_JUMP_PAUSE_DEFAULT;
+    conf->jump_to_standby_chk = WEIGHT_JUMP_TO_STANDBY_CHECK_TIMES;
+    conf->jump_to_bigjump_chk = WEIGHT_JUMP_TO_BIGJUMP_CHECK_TIMES;
+    conf->jump_chk = WEIGHT_JUMP_CHECK_TIMES;
+    conf->jump_cat_weight_g = WEIGHT_CAT_VAL;
+
+    conf->bigjump_period_ms = WEIGHT_BIGJUMP_PERIOD;
+
+    conf->postevent_period_ms = WEIGHT_POSTEVENT_PERIOD;
+    conf->postevnet_chk = WEIGHT_POSTEVENT_CHECK_TIMES;
+}
+
+static esp_err_t weight_conf_init(weight_task_cb *task) {
+    // if conf OTA changing, that should be migrated into new config version
+    if (WEIGHT_CONF_VERSION == 1) {
+        if ((task->conf = malloc(sizeof(weight_conf_ver1_t))) == NULL) {
+            return esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
+        }
+        // TODO: Load from nvs. If not exist in nvs, use default value and save
+        // into NVS
+        weight_conf_init_v1(w_task_cb.conf);
+    } else {
+        return ESP_FAIL;
+    }
+
+    return ESP_OK;
 }
 
 static void weight_task(void *pvParameter) {
-    // inital cb
-    w_task_cb.now_stat = w_task_cb.pre_stat = WEIGHT_TASK_STAT_START;
-    w_task_cb.ring_buffer_idx = 0;
-    w_task_cb.ring_buffer_loop = false;
-    w_task_cb.ref_adc_sum = 0;
-    w_task_cb.weight_coefficent = WEIGHT_COEFFICIENT;
-    w_task_cb.standby_period_ms = WEIGHT_STANDBY_PERIOD;
-    w_task_cb.jump_period_ms = WEIGHT_JUMP_PERIOD;
-    w_task_cb.bugjump_period_ms = WEIGHT_BIGJUMP_PERIOD;
-    w_task_cb.postevent_period_ms = WEIGHT_POSTEVENT_PERIOD;
-    w_task_cb.period_ms = w_task_cb.standby_period_ms;
-    w_task_cb.jump_pause_times = WEIGHT_JUMP_PAUSE_DEFAULT;
-    w_task_cb.weight_pause_times = 0;
-    w_task_cb.ref_adc_exec = true;
-    w_task_cb.cat_weight = WEIGHT_CAT_VAL;
-    w_task_cb.active_weight = WEIGHT_ACTIVE_VAL;
-    w_task_cb.jump_to_standby_chk = WEIGHT_JUMP_TO_STANDBY_CHECK_TIMES;
-    w_task_cb.jump_to_bigjump_chk = WEIGHT_JUMP_TO_BIGJUMP_CHECK_TIMES;
-    w_task_cb.jump_chk = WEIGHT_JUMP_CHECK_TIMES;
-    w_task_cb.postevnet_chk = WEIGHT_POSTEVENT_CHECK_TIMES;
-    task_data.cali_data_mutex = xSemaphoreCreateMutex();
+    // init task_data
+    weight_data_init(&task_data);
+    // init conf data.
+    ESP_ERROR_CHECK(weight_conf_init(&w_task_cb));
     weight_load_nvs_cali_val();
 
     for (;;) {
         // measure weight
         weight_get();
 
-        // state machine
-        switch (w_task_cb.now_stat) {
+        switch (task_data.now_fsm) {
         case WEIGHT_TASK_STAT_START:
         default:
             weight_fsm_check_start();
@@ -319,14 +398,13 @@ static void weight_task(void *pvParameter) {
             weight_fsm_check_postevent();
         }
 
-        if (w_task_cb.now_stat != w_task_cb.pre_stat) {
-            ESP_LOGW(TAG, "fsm: [%s]->[%s]",
-                     weight_fsm_name[w_task_cb.pre_stat],
-                     weight_fsm_name[w_task_cb.now_stat]);
-            w_task_cb.pre_stat = w_task_cb.now_stat;
+        if (task_data.now_fsm != task_data.pre_fsm) {
+            ESP_LOGW(TAG, "fsm: [%s]->[%s]", weight_fsm_name[task_data.pre_fsm],
+                     weight_fsm_name[task_data.now_fsm]);
+            task_data.pre_fsm = task_data.now_fsm;
         }
 
-        vTaskDelay(w_task_cb.period_ms / portTICK_PERIOD_MS);
+        vTaskDelay(task_data.period_ms / portTICK_PERIOD_MS);
     }
 }
 
@@ -334,27 +412,21 @@ float weight_calculate(float adc, float weight_coefficeint) {
     return adc * weight_coefficeint;
 }
 
-int weight_get_now_weight_int(void) { return (int)w_task_cb.now_weight; }
+int weight_get_now_weight_int(void) { return (int)w_task_cb.now_weight_g; }
 
 float weight_get_ref_weight(void) {
-
-    float weight;
-
-    weight = w_task_cb.ref_weight;
-
     ESP_LOGI(TAG, "ref_adc: %.3f", w_task_cb.ref_adc);
-    ESP_LOGI(TAG, "ref_weight: %.3f g", weight);
-
-    return weight;
+    ESP_LOGI(TAG, "ref_weight_g: %.3f g", w_task_cb.ref_weight_g);
+    return w_task_cb.ref_weight_g;
 }
 
 float weight_get_now_weight(void) {
     float weight;
 
-    weight = w_task_cb.now_weight;
+    weight = w_task_cb.now_weight_g;
 
     ESP_LOGI(TAG, "ref_adc: %.3f", w_task_cb.latest_adc);
-    ESP_LOGI(TAG, "ref_weight: %.3f g", weight);
+    ESP_LOGI(TAG, "now_weight_g: %.3f g", weight);
 
     return weight;
 }
@@ -445,7 +517,7 @@ esp_err_t weight_save_nvs_cali_val(void) {
 void app_weight_main(esp_event_loop_handle_t event_loop) {
     ESP_LOGD(TAG, "app_weight_main start");
 
-    w_task_cb.evt_loop = event_loop;
+    task_data.evt_loop = event_loop;
 
     xTaskCreate(&weight_task, "weight_task", 4096, NULL, 4, NULL);
 }
