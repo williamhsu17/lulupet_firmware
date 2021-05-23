@@ -1,5 +1,3 @@
-#include <string.h>
-
 #include "cJSON.h"
 #include "esp_bit_defs.h"
 #include "esp_blufi_api.h"
@@ -12,16 +10,18 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
+
+#include <string.h>
 
 #include "include/app_key.h"
 #include "include/app_led.h"
 #include "include/app_wifi.h"
 #include "include/blufi.h"
 #include "include/event.h"
+#include "include/nvs_op.h"
 #include "include/util.h"
 
 #define BLUFI_DEVICE_NAME "Lulupet AI Litter Box"
@@ -668,8 +668,9 @@ void blufi_start(esp_event_loop_handle_t event_loop) {
     vTaskDelay(500 / portTICK_PERIOD_MS);
     BLUFI_INFO("enable lid and token");
     http_get_enable();
-    nvs_write_lid_token(&lulupet_lid_get[0],
-                        &lulupet_token_get[0]); // TODO: error handling
+    nvs_write_lid_token(&lulupet_lid_get[0], sizeof(lulupet_lid_get),
+                        &lulupet_token_get[0],
+                        sizeof(lulupet_token_get)); // TODO: error handling
     BLUFI_INFO("store WiFi setting to NVS");
     nvs_write_wifi_val(1, &sta_config); // TODO: error handling
     blufi_set_led_cmd(LED_ALL_OFF);

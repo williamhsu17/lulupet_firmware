@@ -12,6 +12,7 @@
 #include "include/app_weight.h"
 #include "include/board_driver.h"
 #include "include/event.h"
+#include "include/nvs_op.h"
 #include "include/util.h"
 
 #include <stdio.h>
@@ -21,6 +22,12 @@
 
 #define WEIGHT_JUMP_PAUSE_DEFAULT 5
 
+typedef struct {
+    SemaphoreHandle_t cali_data_mutex;
+} weight_task_data_t;
+
+static weight_task_data_t task_data;
+
 static char *weight_fsm_name[] = {"start", "standby", "jump", "bigjump",
                                   "postevent"};
 
@@ -29,6 +36,7 @@ weight_task_cb w_task_cb;
 // static function prototype
 static void weight_post_evnet(esp_event_loop_handle_t event_loop, float weight,
                               rawdata_eventid eventid);
+static float weight_calculate_internal(float adc, float weight_coefficeint);
 static void weight_get(void);
 static void weight_fsm_check_start(void);
 static void weight_fsm_check_standby(void);
@@ -55,6 +63,26 @@ static void weight_post_evnet(esp_event_loop_handle_t event_loop, float weight,
                       &evt, sizeof(evt), pdMS_TO_TICKS(1000));
 }
 
+static float weight_calculate_internal(float adc, float weight_coefficeint) {
+    float weight = weight_calculate(adc, weight_coefficeint);
+
+    xSemaphoreTake(task_data.cali_data_mutex, portMAX_DELAY);
+    weight = adc * weight_coefficeint;
+    if (w_task_cb.cali_cb.cali_val_num != 0) {
+        for (uint8_t i = 0; i < w_task_cb.cali_cb.cali_val_num; ++i) {
+            weight_cali_val *cali_val = &w_task_cb.cali_cb.cali_val[i];
+            if (weight > cali_val->range_floor &&
+                weight <= cali_val->range_ceiling) {
+                // y = a * x + b;
+                weight = cali_val->slope * weight + cali_val->offset;
+            }
+        }
+    }
+    xSemaphoreGive(task_data.cali_data_mutex);
+
+    return weight;
+}
+
 static void weight_get(void) {
     if (w_task_cb.weight_pause_times) {
         ESP_LOGI(TAG, "weight pause[%d]", w_task_cb.weight_pause_times);
@@ -67,8 +95,8 @@ static void weight_get(void) {
     if (i2c_mcp3221_readADC(I2C_MASTER_NUM, &tmp_adc) == ESP_OK) {
         // get latest adc
         w_task_cb.latest_adc = 1.0 * tmp_adc;
-        w_task_cb.now_weight =
-            weight_calculate(w_task_cb.latest_adc, w_task_cb.weight_coefficent);
+        w_task_cb.now_weight = weight_calculate_internal(
+            w_task_cb.latest_adc, w_task_cb.weight_coefficent);
 
         // get reference adc
         if (w_task_cb.ref_adc_exec) {
@@ -97,7 +125,7 @@ static void weight_get(void) {
                 w_task_cb.ring_buffer_idx = 0;
                 w_task_cb.ring_buffer_loop = true;
             }
-            w_task_cb.ref_weight = weight_calculate(
+            w_task_cb.ref_weight = weight_calculate_internal(
                 w_task_cb.ref_adc, w_task_cb.weight_coefficent);
         }
 
@@ -261,6 +289,8 @@ static void weight_task(void *pvParameter) {
     w_task_cb.jump_to_bigjump_chk = WEIGHT_JUMP_TO_BIGJUMP_CHECK_TIMES;
     w_task_cb.jump_chk = WEIGHT_JUMP_CHECK_TIMES;
     w_task_cb.postevnet_chk = WEIGHT_POSTEVENT_CHECK_TIMES;
+    task_data.cali_data_mutex = xSemaphoreCreateMutex();
+    weight_load_nvs_cali_val();
 
     for (;;) {
         // measure weight
@@ -301,11 +331,116 @@ static void weight_task(void *pvParameter) {
 }
 
 float weight_calculate(float adc, float weight_coefficeint) {
-    // TODO: use calibration data to calculate
     return adc * weight_coefficeint;
 }
 
-int weight_get_latest(void) { return (int)w_task_cb.now_weight; }
+int weight_get_now_weight_int(void) { return (int)w_task_cb.now_weight; }
+
+float weight_get_ref_weight(void) {
+
+    float weight;
+
+    weight = w_task_cb.ref_weight;
+
+    ESP_LOGI(TAG, "ref_adc: %.3f", w_task_cb.ref_adc);
+    ESP_LOGI(TAG, "ref_weight: %.3f g", weight);
+
+    return weight;
+}
+
+float weight_get_now_weight(void) {
+    float weight;
+
+    weight = w_task_cb.now_weight;
+
+    ESP_LOGI(TAG, "ref_adc: %.3f", w_task_cb.latest_adc);
+    ESP_LOGI(TAG, "ref_weight: %.3f g", weight);
+
+    return weight;
+}
+
+void weight_set_cali_val(uint32_t range_floor, uint32_t range_ceiling,
+                         float slope, float offset) {
+    ESP_LOGD(TAG, "range_floor: %d", range_floor);
+    ESP_LOGD(TAG, "range_ceilling: %d", range_ceiling);
+    ESP_LOGD(TAG, "slope: %.3f", slope);
+    ESP_LOGD(TAG, "offset: %.3f", offset);
+    xSemaphoreTake(task_data.cali_data_mutex, portMAX_DELAY);
+
+    if (w_task_cb.cali_cb.cali_val_num >= WEIGHT_CALI_DATA_BUF) {
+        ESP_LOGE(TAG, "over calibartion data buffer: %d", WEIGHT_CALI_DATA_BUF);
+        xSemaphoreGive(task_data.cali_data_mutex);
+        return;
+    }
+
+    weight_cali_val *cali_val =
+        &w_task_cb.cali_cb.cali_val[w_task_cb.cali_cb.cali_val_num++];
+    cali_val->range_floor = range_floor;
+    cali_val->range_ceiling = range_ceiling;
+    cali_val->slope = slope;
+    cali_val->offset = offset;
+    xSemaphoreGive(task_data.cali_data_mutex);
+    weight_list_cali_val_ram();
+}
+
+void weight_list_cali_val_ram(void) {
+
+    xSemaphoreTake(task_data.cali_data_mutex, portMAX_DELAY);
+    weight_list_cali_val(&w_task_cb.cali_cb);
+    xSemaphoreGive(task_data.cali_data_mutex);
+}
+
+void weight_list_cali_val(weight_cali_cb *cb) {
+    char range_str[32];
+    char formula_str[32];
+
+    if (cb->cali_val_num == 0) {
+        ESP_LOGW(TAG, "weight calibration data is empty");
+        return;
+    }
+
+    for (uint8_t i = 0; i < cb->cali_val_num; ++i) {
+        weight_cali_val *cali_val = &cb->cali_val[i];
+        snprintf(range_str, sizeof(range_str), "%d <= x <= %d",
+                 cali_val->range_floor, cali_val->range_ceiling);
+        snprintf(formula_str, sizeof(formula_str), "\"y= %.3f * x + (%.3f)\"",
+                 cali_val->slope, cali_val->offset);
+
+        // printf("weight_cali[%d]: %32s %32s\n", i, range_str, formula_str);
+        ESP_LOGI(TAG, "weight_cali[%d]: %32s %32s", i, range_str, formula_str);
+    }
+}
+
+esp_err_t weight_load_nvs_cali_val(void) {
+    esp_err_t esp_err;
+
+    xSemaphoreTake(task_data.cali_data_mutex, portMAX_DELAY);
+    esp_err = nvs_cali_read_weight_clai_cb(&w_task_cb.cali_cb);
+    xSemaphoreGive(task_data.cali_data_mutex);
+
+    return esp_err;
+}
+
+esp_err_t weight_clear_nvs_cali_val(void) {
+    esp_err_t esp_err;
+
+    xSemaphoreTake(task_data.cali_data_mutex, portMAX_DELAY);
+    w_task_cb.cali_cb.cali_val_num = 0;
+    esp_err = nvs_cali_reset_weight_clai_cb();
+    xSemaphoreGive(task_data.cali_data_mutex);
+
+    return esp_err;
+}
+
+esp_err_t weight_save_nvs_cali_val(void) {
+    esp_err_t esp_err;
+
+    xSemaphoreTake(task_data.cali_data_mutex, portMAX_DELAY);
+    esp_err = nvs_cali_write_weight_clai_cb(&w_task_cb.cali_cb);
+    xSemaphoreGive(task_data.cali_data_mutex);
+
+    return esp_err;
+}
 
 void app_weight_main(esp_event_loop_handle_t event_loop) {
     ESP_LOGD(TAG, "app_weight_main start");

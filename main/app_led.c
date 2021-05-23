@@ -2,17 +2,16 @@
 #include "driver/i2c.h"
 #include "esp_err.h"
 #include "esp_log.h"
-
 #include "freertos/event_groups.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
+#include <stdio.h>
+#include <string.h>
+
 #include "include/app_led.h"
 #include "include/board_driver.h"
 #include "include/util.h"
-
-#include <stdio.h>
-#include <string.h>
 
 #define TAG "led_task"
 
@@ -23,7 +22,8 @@
 QueueHandle_t led_cmd_que = NULL;
 
 static char *led_cmd_type[] = {
-    "off", "w_solid", "r_solid", "b_solid", "g_solid", "b_1Hz", "r_1Hz",
+    "off",     "w_solid", "r_solid", "g_solid",
+    "b_solid", "r_1Hz",   "g_1Hz",   "b_1Hz",
 };
 
 static void led_task(void *pvParameter) {

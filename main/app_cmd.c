@@ -1,17 +1,19 @@
-#include "app_cmd.h"
 #include "argtable3/argtable3.h"
 #include "driver/uart.h"
 #include "esp_console.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_vfs_dev.h"
+#include "linenoise/linenoise.h"
+#include "sys/queue.h"
+
+#include <stdio.h>
+#include <string.h>
+
+#include "app_cmd.h"
 #include "include/app_weight.h"
 #include "include/board_driver.h"
 #include "include/util.h"
-#include "linenoise/linenoise.h"
-#include "sys/queue.h"
-#include <stdio.h>
-#include <string.h>
 
 #define TAG "cmd"
 
@@ -57,6 +59,15 @@ struct {
     struct arg_end *end;
 } cmd_weight_get_val_args;
 
+struct {
+    struct arg_str *cmd;
+    struct arg_int *range_floor;
+    struct arg_int *range_ceiling;
+    struct arg_int *slope;
+    struct arg_int *offset;
+    struct arg_end *end;
+} cmd_weight_set_cali_args;
+
 extern weight_task_cb w_task_cb;
 
 static int cmd_led_set(int argc, char **argv);
@@ -64,6 +75,7 @@ static int cmd_led_set(int argc, char **argv);
 static int cmd_weight_condition_set(int argc, char **argv);
 #endif
 static int cmd_weight_get_param(int argc, char **argv);
+static int cmd_weight_get_val(int argc, char **argv);
 static int cmd_key_status(int argc, char **argv);
 static int cmd_pir_pwr(int argc, char **argv);
 static int cmd_pir_status(int argc, char **argv);
@@ -73,14 +85,9 @@ static int cmd_pir_pwr(int argc, char **argv) {
 
     PARSE_ARG(cmd_pir_pwr_args);
 
-    if (cmd_pir_pwr_args.en->count == 0) {
-        printf("param err");
-        goto cmd_pir_pwr_err;
-    }
-
     if (cmd_pir_pwr_args.en->ival[0] != 0 &&
         cmd_pir_pwr_args.en->ival[0] != 1) {
-        printf("en <0|1>\n");
+        arg_print_glossary(stderr, (void **)&cmd_pir_pwr_args, NULL);
         goto cmd_pir_pwr_err;
     }
 
@@ -113,15 +120,9 @@ static int cmd_led_set(int argc, char **argv) {
 
     PARSE_ARG(cmd_led_set_args);
 
-    if (cmd_led_set_args.led_type->count == 0 ||
-        cmd_led_set_args.en->count == 0) {
-        printf("param err");
-        goto cmd_led_set_err;
-    }
-
     if (cmd_led_set_args.en->ival[0] != 0 &&
         cmd_led_set_args.en->ival[0] != 1) {
-        printf("en <0|1>\n");
+        arg_print_glossary(stderr, (void **)&cmd_led_set_args, NULL);
         goto cmd_led_set_err;
     }
 
@@ -137,8 +138,10 @@ static int cmd_led_set(int argc, char **argv) {
         err = board_led_ctrl(LED_TYPE_IR, (bool)cmd_led_set_args.en->ival[0]);
     else if (strcmp(cmd_led_set_args.led_type->sval[0], "W") == 0)
         err = board_led_ctrl(LED_TYPE_BD_W, (bool)cmd_led_set_args.en->ival[0]);
-    else
-        printf("led_type <w|r|g|b|IR|W>\n");
+    else {
+        arg_print_glossary(stderr, (void **)&cmd_led_set_args, NULL);
+        goto cmd_led_set_err;
+    }
 
     if (err == ESP_OK)
         printf("ok\n");
@@ -162,12 +165,6 @@ struct {
 static int cmd_weight_condition_set(int argc, char **argv) {
     PARSE_ARG(cmd_weight_condition_set_args);
 
-    if (cmd_weight_condition_set_args.condition_type->count == 0 ||
-        cmd_weight_condition_set_args.value->count == 0) {
-        printf("param err");
-        goto cmd_weight_condition_set_err;
-    }
-
     if (strcmp(cmd_weight_condition_set_args.condition_type->sval[0],
                "adc_w") == 0)
         w_task_cb.now_weight =
@@ -179,8 +176,11 @@ static int cmd_weight_condition_set(int argc, char **argv) {
     else if (strcmp(cmd_weight_condition_set_args.condition_type->sval[0],
                     "pir") == 0)
         w_task_cb.pir_level = cmd_weight_condition_set_args.value->ival[0];
-    else
-        printf("weight_condition <adc_w|ref_w|pir>\n");
+    else {
+        arg_print_glossary(stderr, (void **)&cmd_weight_condition_set_args,
+                           NULL);
+        goto cmd_weight_condition_set_err;
+    }
 
     return 0;
 
@@ -208,32 +208,28 @@ static int cmd_weight_get_param(int argc, char **argv) {
 
     return 0;
 }
-static int cmd_weight_get_val(int argc, char **argv) { 
 
+static int cmd_weight_get_val(int argc, char **argv) {
     PARSE_ARG(cmd_weight_get_val_args);
 
-    if (cmd_weight_get_val_args.repeat == 0 ) {
-        printf("param err");
-        goto cmd_weight_get_val_err;
-    }
-
-    if (cmd_weight_get_val_args.repeat->ival[0] < 1 || 
-        cmd_weight_get_val_args.repeat->ival[0] > 255 ) {
-        printf("repeat <1...255>\n");
+    if (cmd_weight_get_val_args.repeat->ival[0] < 1 ||
+        cmd_weight_get_val_args.repeat->ival[0] > 255) {
+        arg_print_glossary(stderr, (void **)&cmd_weight_get_val_args, NULL);
         goto cmd_weight_get_val_err;
     }
 
     float adc;
-    float mg;
+    float g;
 
-    esp_err_t err = board_get_weight((uint8_t)cmd_weight_get_val_args.repeat->ival[0], &adc, &mg);
+    esp_err_t err = board_get_weight(
+        (uint8_t)cmd_weight_get_val_args.repeat->ival[0], &adc, &g);
 
     if (err == ESP_OK) {
         printf("adc: %.3f\n", adc);
-        printf("weight: %.3f mg\n", mg);
+        printf("weight: %.3f g\n", g);
     } else {
         printf("adc: %.3f\n", adc);
-        printf("weight: %.3f mg\n", mg);
+        printf("weight: %.3f g\n", g);
         printf("err: %s\n", esp_err_to_name(err));
     }
 
@@ -244,17 +240,63 @@ cmd_weight_get_val_err:
     return -1;
 }
 
+static int cmd_weight_set_cali(int argc, char **argv) {
+    PARSE_ARG(cmd_weight_set_cali_args);
+
+    // <set|list|list_nvs|save|clear>
+    if (strcmp(cmd_weight_set_cali_args.cmd->sval[0], "set") == 0) {
+        if (cmd_weight_set_cali_args.range_floor->count != 1 ||
+            cmd_weight_set_cali_args.range_ceiling->count != 1 ||
+            cmd_weight_set_cali_args.offset->count != 1 ||
+            cmd_weight_set_cali_args.slope->count != 1) {
+            arg_print_glossary(stderr, (void **)&cmd_weight_set_cali_args,
+                               NULL);
+            goto cmd_weight_set_cali_err;
+        }
+        ESP_LOGD(TAG, "range_floor: %d",
+                 cmd_weight_set_cali_args.range_floor->ival[0]);
+        ESP_LOGD(TAG, "range_ceilling: %d",
+                 cmd_weight_set_cali_args.range_ceiling->ival[0]);
+        ESP_LOGD(TAG, "slope: %.3f",
+                 1.0 * cmd_weight_set_cali_args.slope->ival[0] / 1000.0);
+        ESP_LOGD(TAG, "offset: %.3f",
+                 1.0 * cmd_weight_set_cali_args.offset->ival[0] / 1000.0);
+        weight_set_cali_val(
+            cmd_weight_set_cali_args.range_floor->ival[0],
+            cmd_weight_set_cali_args.range_ceiling->ival[0],
+            1.0 * cmd_weight_set_cali_args.slope->ival[0] / 1000.0,
+            1.0 * cmd_weight_set_cali_args.offset->ival[0] / 1000.0);
+    } else if (strcmp(cmd_weight_set_cali_args.cmd->sval[0], "list") == 0) {
+        weight_list_cali_val_ram();
+    } else if (strcmp(cmd_weight_set_cali_args.cmd->sval[0], "list_nvs") == 0) {
+        weight_load_nvs_cali_val();
+    } else if (strcmp(cmd_weight_set_cali_args.cmd->sval[0], "save") == 0) {
+        weight_save_nvs_cali_val();
+    } else if (strcmp(cmd_weight_set_cali_args.cmd->sval[0], "clear") == 0) {
+        weight_clear_nvs_cali_val();
+    } else {
+        arg_print_glossary(stderr, (void **)&cmd_weight_set_cali_args, NULL);
+        goto cmd_weight_set_cali_err;
+    }
+
+    return 0;
+
+cmd_weight_set_cali_err:
+    arg_print_errors(stderr, cmd_weight_set_cali_args.end, argv[0]);
+    return -1;
+}
+
 static esp_err_t register_manufacture_command(void) {
     cmd_led_set_args.led_type =
         arg_str1("t", "led_type", "<w|r|g|b|IR|W>", "led type");
-    cmd_led_set_args.en = arg_int0("e", "enable", "<0|1>", "enable led");
+    cmd_led_set_args.en = arg_int1("e", "enable", "<0|1>", "enable led");
     cmd_led_set_args.end = arg_end(2);
 
 #if (FUNC_WEIGHT_FAKE)
     cmd_weight_condition_set_args.condition_type = arg_str1(
         "c", "weight_condition", "<adc_w|ref_w|pir>", "weight condition type");
     cmd_weight_condition_set_args.value =
-        arg_int0("v", "value", "", "condition value");
+        arg_int1("v", "value", "", "condition value");
     cmd_weight_condition_set_args.end = arg_end(2);
 #endif
 
@@ -262,10 +304,24 @@ static esp_err_t register_manufacture_command(void) {
         arg_str1("l", "weight_get_param", "<1>", "weight list parameters");
     cmd_weight_get_param_args.end = arg_end(1);
 
-    cmd_weight_get_val_args.repeat = arg_int0("r", "repeat", "<1...255>", "adc repeat time");
+    cmd_weight_get_val_args.repeat =
+        arg_int1("r", "repeat", "<1...255>", "adc repeat time");
     cmd_weight_get_val_args.end = arg_end(1);
 
-    cmd_pir_pwr_args.en = arg_int0("e", "enable", "<0|1>", "enable pir");
+    cmd_weight_set_cali_args.cmd =
+        arg_str1("c", "weight set clibration", "<set|list|list_nvs|save|clear>",
+                 "weight calibration commands");
+    cmd_weight_set_cali_args.range_floor =
+        arg_int0("d", "range_floor", "<int>", "calculated range of floor");
+    cmd_weight_set_cali_args.range_ceiling =
+        arg_int0("u", "range_ceiling", "<int>", "calculated range of ceiling");
+    cmd_weight_set_cali_args.slope =
+        arg_int0("s", "slope", "<int>", "calculated slope");
+    cmd_weight_set_cali_args.offset =
+        arg_int0("o", "offset", "<int>", "calculated offset");
+    cmd_weight_set_cali_args.end = arg_end(5);
+
+    cmd_pir_pwr_args.en = arg_int1("e", "enable", "<0|1>", "enable pir");
     cmd_pir_pwr_args.end = arg_end(1);
 
     const esp_console_cmd_t cmds[] = {
@@ -298,6 +354,13 @@ static esp_err_t register_manufacture_command(void) {
             .hint = NULL,
             .func = &cmd_weight_get_val,
             .argtable = &cmd_weight_get_val_args,
+        },
+        {
+            .command = "weight_set_cali",
+            .help = "weight set calibration",
+            .hint = NULL,
+            .func = &cmd_weight_set_cali,
+            .argtable = &cmd_weight_set_cali_args,
         },
         {
             .command = "key_status",

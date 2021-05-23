@@ -9,10 +9,10 @@ extern "C" {
 #include "util.h"
 #include <stdbool.h>
 
-#define WEIGHT_TASK_BUFFER_SIZE 100
+#define WEIGHT_TASK_BUFFER_SIZE 255
 #define WEIGHT_ACTIVE_VAL 200.0 // unit:g
 #define WEIGHT_CAT_VAL 2000.0   // unit:g
-#define WEIGHT_COEFFICIENT 20000.0 / 4096.0
+#define WEIGHT_COEFFICIENT 30000.0 / 4096.0
 #define WEIGHT_STANDBY_PERIOD 10     // ms
 #define WEIGHT_JUMP_PERIOD 1000      // ms
 #define WEIGHT_BIGJUMP_PERIOD 1000   // ms
@@ -21,6 +21,7 @@ extern "C" {
 #define WEIGHT_JUMP_TO_BIGJUMP_CHECK_TIMES 4
 #define WEIGHT_JUMP_CHECK_TIMES 25
 #define WEIGHT_POSTEVENT_CHECK_TIMES 1
+#define WEIGHT_CALI_DATA_BUF 10
 
 enum weight_task_fsm {
     WEIGHT_TASK_STAT_START = 0,
@@ -29,6 +30,18 @@ enum weight_task_fsm {
     WEIGHT_TASK_STAT_BIGJUMP,
     WEIGHT_TASK_STAT_POSTEVENT,
 };
+
+typedef struct { // range_floor <= range < range_ceiling
+    uint32_t range_floor;
+    uint32_t range_ceiling;
+    float slope;
+    float offset;
+} weight_cali_val;
+
+typedef struct { // range_floor <= range < range_ceiling
+    uint8_t cali_val_num;
+    weight_cali_val cali_val[WEIGHT_CALI_DATA_BUF];
+} weight_cali_cb;
 
 typedef struct {
     // weight state machine
@@ -42,12 +55,12 @@ typedef struct {
     unsigned int ref_adc_sum;
     bool ring_buffer_loop;
     uint32_t ring_buffer_idx;
-    float ref_adc;
-    float latest_adc;
+    volatile float ref_adc;
+    volatile float latest_adc;
     float weight_coefficent;
 
-    float ref_weight; // unit:g
-    float now_weight; // unit:g
+    volatile float ref_weight; // unit:g
+    volatile float now_weight; // unit:g
 
     bool ref_adc_exec;
 
@@ -80,6 +93,8 @@ typedef struct {
 
     int pir_level;
 
+    weight_cali_cb cali_cb;
+
     esp_event_loop_handle_t evt_loop;
 } weight_task_cb;
 
@@ -88,8 +103,6 @@ typedef struct {
     int weight_g;
     int pir_val;
 } weight_take_photo_event_t;
-
-void app_weight_main(esp_event_loop_handle_t event_loop);
 
 /**
  * @brief Get calculated weight. weight = adc * weight_coefficeint. unit: g.
@@ -102,11 +115,84 @@ void app_weight_main(esp_event_loop_handle_t event_loop);
 float weight_calculate(float adc, float weight_coefficeint);
 
 /**
+ * @brief Output ref_weight weight. unit: g.
+ *
+ * @retval ref_weight
+ */
+float weight_get_ref_weight(void);
+
+/**
+ * @brief Output now_weight. unit: g.
+ *
+ * @retval now_weight
+ */
+float weight_get_now_weight(void);
+
+/**
  * @brief Get the latest weight. unit: g.
  *
- * @retval weight
+ * @retval now_weight
  */
-int weight_get_latest(void);
+int weight_get_now_weight_int(void);
+
+/**
+ * @brief Set the calibrated value.
+ *
+ * @param range_floor[in] calculated range of floor.
+ * @param range_ceiling[in] calculated range of ceiling.
+ * @param slope[in] calculated slope.
+ * @param offset[in] calculated offset.
+ *
+ * @retval none
+ */
+void weight_set_cali_val(uint32_t range_floor, uint32_t range_ceiling,
+                         float slope, float offset);
+
+/**
+ * @brief List the weight calibated value in the ram.
+ *
+ * @retval none
+ */
+void weight_list_cali_val_ram(void);
+
+/**
+ * @brief List the weight calibated value in the ram.
+ *
+ * @param range_floor[in] Would like to display structure of weight_cali_cb.
+ *
+ * @retval none
+ */
+void weight_list_cali_val(weight_cali_cb *cb);
+
+/**
+ * @brief Load weight calibration data from nvs into ram
+ *
+ * @retval esp_err_t
+ */
+esp_err_t weight_load_nvs_cali_val(void);
+
+/**
+ * @brief Clear weight calibration data at nvs and ram
+ *
+ * @retval esp_err_t
+ */
+esp_err_t weight_clear_nvs_cali_val(void);
+
+/**
+ * @brief Save weight calibration data from ram into nvs
+ *
+ * @retval esp_err_t
+ */
+esp_err_t weight_save_nvs_cali_val(void);
+
+/**
+ * @brief Start weight_task service
+ *
+ * @param event_loop[in] esp32 event loop handler.
+ *
+ * @retval none
+ */
+void app_weight_main(esp_event_loop_handle_t event_loop);
 
 #ifdef __cplusplus
 }
