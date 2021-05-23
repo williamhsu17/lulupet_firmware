@@ -90,8 +90,6 @@ typedef struct {
     int pir_level;
 
     weight_cali_cb cali_cb;
-
-    esp_event_loop_handle_t evt_loop;
 } weight_task_cb;
 
 typedef struct {

@@ -27,6 +27,7 @@ typedef struct {
     enum weight_task_fsm now_fsm;
     enum weight_task_fsm pre_fsm;
 
+    esp_event_loop_handle_t evt_loop;
     SemaphoreHandle_t cali_data_mutex;
 } weight_task_data_t;
 
@@ -238,7 +239,7 @@ static void weight_fsm_goto_bigjump(void) {
     board_led_ctrl(LED_TYPE_IR, true); // turn on IR led
     w_task_cb.period_ms = w_task_cb.bugjump_period_ms;
     w_task_cb.period_cnt = 0;
-    weight_post_evnet(w_task_cb.evt_loop, w_task_cb.now_weight,
+    weight_post_evnet(task_data.evt_loop, w_task_cb.now_weight,
                       RAWDATA_EVENTID_CAT_IN);
 
     // fsm change
@@ -255,7 +256,7 @@ static void weight_fsm_check_postevent(void) {
         ESP_LOGI(TAG, "cat druing time: %d ms",
                  w_task_cb.period_cnt *
                      w_task_cb.bugjump_period_ms); // record cat during time
-        weight_post_evnet(w_task_cb.evt_loop,
+        weight_post_evnet(task_data.evt_loop,
                           (w_task_cb.now_weight - w_task_cb.ref_weight),
                           RAWDATA_EVENTID_CAT_OUT);
         weight_fsm_goto_standby();
@@ -449,7 +450,7 @@ esp_err_t weight_save_nvs_cali_val(void) {
 void app_weight_main(esp_event_loop_handle_t event_loop) {
     ESP_LOGD(TAG, "app_weight_main start");
 
-    w_task_cb.evt_loop = event_loop;
+    task_data.evt_loop = event_loop;
 
     xTaskCreate(&weight_task, "weight_task", 4096, NULL, 4, NULL);
 }
