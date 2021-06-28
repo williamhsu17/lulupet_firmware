@@ -29,6 +29,8 @@ typedef struct {
 } httpc_ota_event_t;
 
 typedef struct {
+    bool task_enable;
+
     esp_event_loop_handle_t evt_loop;
     bool weight_event_update;
     bool ota_event_update;
@@ -419,6 +421,7 @@ static void http_post_data(weight_take_photo_event_t *take_photo_event) {
 
 static void http_get_ota_update(httpc_ota_event_t *event) {
     // TODO: implement eps ota
+
     return;
 }
 
@@ -451,6 +454,8 @@ static void httpc_task(void *pvParameter) {
     }
 #endif
 
+    task_conf.task_enable = true;
+
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(HTTPC_TASK_PERIOD_MS));
         if (pdTRUE == xSemaphoreTake(task_conf.data_mutex, portMAX_DELAY)) {
@@ -482,6 +487,11 @@ void start_httpc_task(esp_event_loop_handle_t event_loop) {
 
 esp_err_t httpc_ota_post_event(esp_event_loop_handle_t event_loop) {
     if (event_loop == NULL) {
+        goto _err;
+    }
+
+    if (task_conf.task_enable == false) {
+        esp_err_print(ESP_ERR_NOT_FOUND, __func__, __LINE__);
         goto _err;
     }
 
