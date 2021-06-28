@@ -26,9 +26,14 @@
 #define HTTP_PAYLOAD_HEADER_FILENAME "lulupet-cat.jpg"
 
 typedef struct {
+} httpc_ota_event_t;
+
+typedef struct {
     esp_event_loop_handle_t evt_loop;
     bool weight_event_update;
+    bool ota_event_update;
     weight_take_photo_event_t weight_take_photo_evt;
+    httpc_ota_event_t ota_evt;
     SemaphoreHandle_t data_mutex;
 } httpc_task_config_t;
 
@@ -65,6 +70,11 @@ static void httpc_loop_event_handler(void *arg, esp_event_base_t base,
             task_conf.weight_take_photo_evt.pir_val,
             task_conf.weight_take_photo_evt.eventid);
         task_conf.weight_event_update = true;
+        break;
+    case LULUPET_EVENT_OTA:
+        memcpy(&task_conf.ota_evt, (httpc_ota_event_t *)event_data,
+               sizeof(httpc_ota_event_t));
+        task_conf.ota_event_update = true;
         break;
     default:
         break;
@@ -407,6 +417,11 @@ static void http_post_data(weight_take_photo_event_t *take_photo_event) {
     return;
 }
 
+static void http_get_ota_update(httpc_ota_event_t *event) {
+    // TODO: implement eps ota
+    return;
+}
+
 static void httpc_task(void *pvParameter) {
     httpc_task_config_t *conf = (httpc_task_config_t *)pvParameter;
 
@@ -448,6 +463,13 @@ static void httpc_task(void *pvParameter) {
                 }
                 task_conf.weight_event_update = false;
             }
+            if (task_conf.ota_event_update) {
+                if (!app_wifi_check_connect(1000)) {
+                    ESP_LOGE(TAG, "wifi disconnect");
+                } else {
+                    http_get_ota_update(&task_conf.ota_evt);
+                }
+            }
             xSemaphoreGive(task_conf.data_mutex);
         }
     }
@@ -456,4 +478,22 @@ static void httpc_task(void *pvParameter) {
 void start_httpc_task(esp_event_loop_handle_t event_loop) {
     task_conf.evt_loop = event_loop;
     xTaskCreate(&httpc_task, "httpc_task", 4096, (void *)&task_conf, 5, NULL);
+}
+
+esp_err_t httpc_ota_post_event(esp_event_loop_handle_t event_loop) {
+    if (event_loop == NULL) {
+        goto _err;
+    }
+
+    httpc_ota_event_t event;
+
+    esp_err_t esp_err =
+        esp_event_post_to(event_loop, LULUPET_EVENT_BASE, LULUPET_EVENT_OTA,
+                          &event, sizeof(event), pdMS_TO_TICKS(1000));
+
+    return esp_err;
+
+_err:
+    ESP_LOGE(TAG, "%s L%d", esp_err_to_name(ESP_ERR_INVALID_ARG), __LINE__);
+    return ESP_ERR_INVALID_ARG;
 }
