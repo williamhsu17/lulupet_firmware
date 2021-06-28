@@ -68,7 +68,7 @@ void app_main() {
     timer_tick_init();
 
 #if (FUNC_CMD_TASK)
-    app_cmd_main(); // Init command line interface
+    app_cmd_main(service_event_loop); // Init command line interface
 #endif
 
     app_key_main(service_event_loop);
