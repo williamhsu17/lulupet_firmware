@@ -3,6 +3,7 @@
 #include "esp_err.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "esp_ota_ops.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -25,6 +26,7 @@
 #define HTTP_PAYLOAD_LENGTH_LEN 10
 #define JSON_URL_VAL_LEN 256
 #define HTTP_PAYLOAD_HEADER_FILENAME "lulupet-cat.jpg"
+#define UPDATE_FIRMWARE_BUF_SIZE 0x1000
 
 typedef struct {
 } httpc_ota_event_t;
@@ -417,18 +419,20 @@ static void http_post_data(weight_take_photo_event_t *take_photo_event) {
     return;
 }
 
-static void http_get_ota_update_latest(httpc_ota_event_t *event) {
-    // TODO: implement eps ota
+static int http_get_ota_update_latest(httpc_ota_event_t *event, char *ota_url,
+                                      int ota_url_len) {
     ESP_LOGI(TAG, "Free Heap Internal is:  %d Byte",
              heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     ESP_LOGI(TAG, "Free Heap PSRAM    is:  %d Byte",
              heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 
+    int ret = -1;
     char *json_str = NULL;
     bool client_open = false;
     int content_length;
     int read_len;
     esp_err_t esp_err;
+    cJSON *rsp_root_obj = NULL;
 
     esp_http_client_config_t config = {
         .url = HTTP_OTA_UPDATE_LATEST_URL,
@@ -437,7 +441,7 @@ static void http_get_ota_update_latest(httpc_ota_event_t *event) {
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == NULL) {
         esp_err_print(ESP_FAIL, __func__, __LINE__);
-        return;
+        goto _end;
     }
     ESP_LOGI(TAG, "http client init");
 
@@ -481,7 +485,53 @@ static void http_get_ota_update_latest(httpc_ota_event_t *event) {
     ESP_LOGI(TAG, "http client read json: %s", json_str);
     ESP_LOGI(TAG, "read_len: %d", read_len);
 
+    // {"msg": "Request Success", "result": "Success", "data": {"id": 3,
+    // "version": "V0.1.0", "enable": true, "latest": true, "file_url":
+    // "http://lulupet.williamhsu.com.tw/media/ota_file/lulupet_fw_v0.2.0.bin",
+    // "type": "release", "display_tag": ""}}
+    rsp_root_obj = cJSON_Parse(json_str);
+    if (rsp_root_obj == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+
+    cJSON *data_obj = cJSON_GetObjectItemCaseSensitive(rsp_root_obj, "data");
+    if (data_obj == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+
+    // get version
+    cJSON *version_obj = cJSON_GetObjectItemCaseSensitive(data_obj, "version");
+    if (version_obj == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+    ESP_LOGI(TAG, "ota version: %s", cJSON_GetStringValue(version_obj));
+    // TODO: check version that should be ota
+
+    // get file_url
+    cJSON *file_url_obj =
+        cJSON_GetObjectItemCaseSensitive(data_obj, "file_url");
+    if (file_url_obj == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+    ESP_LOGI(TAG, "ota file_url_obj: %s", cJSON_GetStringValue(file_url_obj));
+
+    if (ota_url == NULL || ota_url_len == 0) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+
+    snprintf(ota_url, ota_url_len, "%s", cJSON_GetStringValue(file_url_obj));
+
+    ret = 0;
+
 _end:
+    if (rsp_root_obj) {
+        free(rsp_root_obj);
+    }
     if (json_str) {
         free(json_str);
     }
@@ -492,7 +542,126 @@ _end:
     ESP_LOGI(TAG, "http client cleanup");
     esp_http_client_cleanup(client);
 
-    return;
+    return ret;
+}
+
+static int http_ota(char *ota_url, bool reboot) {
+
+    int ret = -1;
+    char *ota_buf = NULL;
+    bool client_open = false;
+    int content_length;
+    int buf_len;
+    esp_err_t esp_err;
+    esp_http_client_config_t config = {
+        .url = ota_url,
+        .event_handler = http_event_handler,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+    ESP_LOGI(TAG, "http client init");
+
+    esp_http_client_set_method(client, HTTP_METHOD_GET);
+
+    if ((esp_err = esp_http_client_open(client, 0)) != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+    client_open = true;
+
+    if ((content_length = esp_http_client_fetch_headers(client)) < 0) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+    ESP_LOGI(TAG, "http client fetech header, length: %d", content_length);
+
+    bool image_header_was_checked = false;
+    esp_ota_handle_t update_handle = 0;
+    const esp_partition_t *update_partition =
+        esp_ota_get_next_update_partition(NULL);
+
+    ota_buf = calloc(UPDATE_FIRMWARE_BUF_SIZE, sizeof(char));
+    if (ota_buf == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+
+    // TODO: set ota led pattern
+    buf_len = 0;
+    for (;;) {
+        int size = esp_http_client_read(client, ota_buf + buf_len,
+                                        UPDATE_FIRMWARE_BUF_SIZE - buf_len);
+        ESP_LOGD(TAG, "size: %d L%d", size, __LINE__);
+        if (size < 0) {
+            ESP_LOGE(TAG, "size: %d L%d", size, __LINE__);
+            goto _end;
+        } else if (size == 0) {
+            break;
+        }
+        buf_len += size;
+        if (!image_header_was_checked) {
+            if (buf_len < sizeof(esp_image_header_t) +
+                              sizeof(esp_image_segment_header_t) +
+                              sizeof(esp_app_desc_t)) {
+                continue;
+            }
+            image_header_was_checked = true;
+            esp_err = esp_ota_begin(update_partition, OTA_SIZE_UNKNOWN,
+                                    &update_handle);
+            if (esp_err != ESP_OK) {
+                esp_err_print(esp_err, __func__, __LINE__);
+                goto _end;
+            }
+        }
+
+        esp_err = esp_ota_write(update_handle, ota_buf, buf_len);
+        if (esp_err != ESP_OK) {
+            esp_err_print(esp_err, __func__, __LINE__);
+            goto _end;
+        }
+        vTaskDelay(pdMS_TO_TICKS(5));
+        buf_len = 0;
+    }
+    if (!image_header_was_checked) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    esp_err = esp_ota_end(update_handle);
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    esp_err = esp_ota_set_boot_partition(update_partition);
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    ret = 0;
+
+_end:
+    if (ota_buf) {
+        free(ota_buf);
+    }
+    if (client_open) {
+        ESP_LOGI(TAG, "http client close");
+        esp_http_client_close(client);
+    }
+    ESP_LOGI(TAG, "http client cleanup");
+    esp_http_client_cleanup(client);
+
+    vTaskDelay(pdMS_TO_TICKS(2000)); // wait http close
+    if (ret == 0 && reboot) {
+        ESP_LOGI(TAG, "system restart L%d", __LINE__);
+        esp_restart();
+    }
+
+    return ret;
 }
 
 static void httpc_task(void *pvParameter) {
@@ -542,7 +711,15 @@ static void httpc_task(void *pvParameter) {
                 if (!app_wifi_check_connect(1000)) {
                     ESP_LOGE(TAG, "wifi disconnect");
                 } else {
-                    http_get_ota_update_latest(&task_conf.ota_evt);
+                    char ota_url[256];
+                    if (http_get_ota_update_latest(&task_conf.ota_evt, ota_url,
+                                                   sizeof(ota_url)) != 0) {
+                        ESP_LOGE(TAG, "L%d", __LINE__);
+                    }
+                    ESP_LOGI(TAG, "ota_url: %s L%d", ota_url, __LINE__);
+                    if (http_ota(ota_url, 1) != 0) {
+                        ESP_LOGE(TAG, "L%d", __LINE__);
+                    }
                 }
                 task_conf.ota_event_update = false;
             }
