@@ -23,6 +23,7 @@
 #define HTTP_PAYLOAD_HEADER_LEN 200
 #define HTTP_PAYLOAD_FOOTER_LEN 50
 #define HTTP_PAYLOAD_LENGTH_LEN 10
+#define JSON_URL_VAL_LEN 256
 #define HTTP_PAYLOAD_HEADER_FILENAME "lulupet-cat.jpg"
 
 typedef struct {
@@ -101,10 +102,6 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
         break;
     case HTTP_EVENT_ON_DATA:
         ESP_LOGD(TAG, "HTTP_EVENT_ON_DATA, len=%d", evt->data_len);
-        if (!esp_http_client_is_chunked_response(evt->client)) {
-            // Write out data
-            // printf("%.*s", evt->data_len, (char*)evt->data);
-        }
         break;
     case HTTP_EVENT_ON_FINISH:
         ESP_LOGD(TAG, "HTTP_EVENT_ON_FINISH");
@@ -381,7 +378,6 @@ http_post_raw_end:
 }
 
 static void http_post_data(weight_take_photo_event_t *take_photo_event) {
-#define JSON_URL_VAL_LEN 256
 
     ESP_LOGI(TAG, "Free Heap Internal is:  %d Byte",
              heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
@@ -419,8 +415,80 @@ static void http_post_data(weight_take_photo_event_t *take_photo_event) {
     return;
 }
 
-static void http_get_ota_update(httpc_ota_event_t *event) {
+static void http_get_ota_update_latest(httpc_ota_event_t *event) {
     // TODO: implement eps ota
+    ESP_LOGI(TAG, "Free Heap Internal is:  %d Byte",
+             heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    ESP_LOGI(TAG, "Free Heap PSRAM    is:  %d Byte",
+             heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+
+    char *json_str = NULL;
+    bool client_open = false;
+    int content_length;
+    int read_len;
+    esp_err_t esp_err;
+
+    esp_http_client_config_t config = {
+        .url = HTTP_OTA_UPDATE_LATEST_URL,
+        .event_handler = http_event_handler,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        return;
+    }
+    ESP_LOGI(TAG, "http client init");
+
+    esp_http_client_set_method(client, HTTP_METHOD_GET);
+    esp_http_client_set_header(client, "accept", "application/json");
+    esp_http_client_set_header(client, "token", "");
+    esp_http_client_set_header(client, "lid", app_wifi_get_lid());
+    esp_http_client_set_header(client, "litter-token", app_wifi_get_token());
+    esp_http_client_set_header(
+        client, "X-CSRFToken",
+        "eA8ob2RLGxH6sQ7njh6pokrwNNTxR7gDqpfhPY9VyO8M9B8HZIaMFrKClihBLO39");
+
+    if ((esp_err = esp_http_client_open(client, 0)) != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+    client_open = true;
+
+    if ((content_length = esp_http_client_fetch_headers(client)) < 0) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+    ESP_LOGI(TAG, "http client fetech header, length: %d", content_length);
+
+    if (content_length > MAX_HTTP_RECV_BUFFER) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+
+    json_str = calloc(MAX_HTTP_RECV_BUFFER + 1, sizeof(char));
+    if (json_str == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+
+    if ((read_len = esp_http_client_read(client, json_str, content_length)) <=
+        0) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+    ESP_LOGI(TAG, "http client read json: %s", json_str);
+    ESP_LOGI(TAG, "read_len: %d", read_len);
+
+_end:
+    if (json_str) {
+        free(json_str);
+    }
+    if (client_open) {
+        ESP_LOGI(TAG, "http client close");
+        esp_http_client_close(client);
+    }
+    ESP_LOGI(TAG, "http client cleanup");
+    esp_http_client_cleanup(client);
 
     return;
 }
@@ -472,8 +540,9 @@ static void httpc_task(void *pvParameter) {
                 if (!app_wifi_check_connect(1000)) {
                     ESP_LOGE(TAG, "wifi disconnect");
                 } else {
-                    http_get_ota_update(&task_conf.ota_evt);
+                    http_get_ota_update_latest(&task_conf.ota_evt);
                 }
+                task_conf.ota_event_update = false;
             }
             xSemaphoreGive(task_conf.data_mutex);
         }
@@ -482,7 +551,7 @@ static void httpc_task(void *pvParameter) {
 
 void start_httpc_task(esp_event_loop_handle_t event_loop) {
     task_conf.evt_loop = event_loop;
-    xTaskCreate(&httpc_task, "httpc_task", 4096, (void *)&task_conf, 5, NULL);
+    xTaskCreate(&httpc_task, "httpc_task", 8192, (void *)&task_conf, 5, NULL);
 }
 
 esp_err_t httpc_ota_post_event(esp_event_loop_handle_t event_loop) {
