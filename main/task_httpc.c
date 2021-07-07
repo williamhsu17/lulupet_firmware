@@ -410,7 +410,9 @@ static void http_post_data(weight_take_photo_event_t *take_photo_event) {
     esp_http_client_cleanup(client);
     ESP_LOGI(TAG, "http client cleanup");
 
-    // TODO: free(json_url_val)
+    if (json_url_val) {
+        free(json_url_val);
+    }
 
     return;
 }
