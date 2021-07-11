@@ -49,10 +49,10 @@ static void led_task(void *pvParameter) {
         if (xStatus == pdPASS) {
             ESP_LOGI(TAG, "LED CMD: receive %s[%d]", led_cmd_type[led_cmd_get],
                      led_cmd_get);
-            cmd_update = 1;
             if (led_cmd_run != led_cmd_get) {
                 board_set_rgb_led(false, false, false);
                 led_cmd_run = led_cmd_get;
+                cmd_update = 1;
             }
 
             repeat_count = 0;
