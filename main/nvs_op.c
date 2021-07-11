@@ -63,12 +63,12 @@ esp_err_t nvs_cali_read_weight_clai_cb(weight_cali_cb *cali) {
     esp_err = nvs_get_blob(h, NVS_WEIGHT_CALI_VAL, cali, &len);
     if (esp_err != ESP_OK) {
         esp_err_print(esp_err, __func__, __LINE__);
-        goto FINAL;
+        goto _end;
     }
 
     weight_list_cali_val(cali);
 
-FINAL:
+_end:
     nvs_close(h);
     return esp_err;
 }
@@ -328,6 +328,8 @@ esp_err_t nvs_read_weight_conf(void *conf, int version) {
 
     ESP_LOGI(TAG, "%s ok", __func__);
 
+    weight_dump_weight_conf_v1(weight_cfg);
+
 _end:
     nvs_close(handle);
     return esp_err;
@@ -366,6 +368,8 @@ esp_err_t nvs_write_weight_conf(void *conf, int version) {
         goto _end;
     }
 
+    ESP_LOGI(TAG, "%s ok", __func__);
+
 _end:
     nvs_close(handle);
     return esp_err;
@@ -391,6 +395,8 @@ esp_err_t nvs_reset_weight_conf(void) {
         esp_err_print(esp_err, __func__, __LINE__);
         goto _end;
     }
+
+    ESP_LOGI(TAG, "%s ok", __func__);
 
 _end:
     nvs_close(handle);
