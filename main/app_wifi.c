@@ -153,14 +153,22 @@ static void wifi_event_init(void) {
 static esp_err_t wifi_event_handler(void *ctx, system_event_t *event) {
     switch (event->event_id) {
     case SYSTEM_EVENT_STA_START:
+        ESP_LOGI(TAG, "-----SYSTEM_EVENT_STA_START-----");
         esp_wifi_connect();
         break;
     case SYSTEM_EVENT_STA_GOT_IP:
+        ESP_LOGI(TAG, "-----SYSTEM_EVENT_STA_GOT_IP-----");
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
+        set_led_cmd(LED_GREEN_SOLID);
+        ESP_LOGI(TAG, "connected to AP");
         break;
     case SYSTEM_EVENT_STA_DISCONNECTED:
         /* This is a workaround as ESP32 WiFi libs don't currently
            auto-reassociate. */
+        ESP_LOGI(TAG, "-----SYSTEM_EVENT_STA_DISCONNECTED-----");
+        if (app_wifi_check_connect(10) == true) {
+            set_led_cmd(LED_GREEN_1HZ);
+        }
         esp_wifi_connect();
         xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
         break;
@@ -219,6 +227,9 @@ static void sntp_obtain_time(void) {
 }
 
 static void sntp_check(void) {
+    // An application with this initialization code will periodically
+    // synchronize the time. The time synchronization period is determined by
+    // CONFIG_LWIP_SNTP_UPDATE_DELAY (default value is one hour).
     ESP_LOGI(TAG, "init SNTP");
     sntp_setoperatingmode(SNTP_OPMODE_POLL);
     sntp_setservername(0, "pool.ntp.org");
@@ -255,8 +266,6 @@ static void wifi_start(esp_event_loop_handle_t event_loop) {
     wifi_init_from_nvs();
     set_led_cmd(LED_GREEN_1HZ);
     wifi_check_connect(WIFI_CONN_CHK_MS, WIFI_CONN_RETRY);
-    set_led_cmd(LED_GREEN_SOLID);
-    ESP_LOGI(TAG, "connected to AP");
     sntp_time_check();
     ESP_LOGI(TAG, "Update time from SNTP");
 }
