@@ -141,7 +141,6 @@ static void wifi_check_connect(uint32_t wait_ms, uint8_t retry) {
 
         if (wifi_check_key_time >= WIFI_CHECK_WAIT_TIME_MS) {
             wifi_system_reset();
-            ;
         }
     }
 }
