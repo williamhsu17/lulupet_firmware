@@ -16,6 +16,7 @@ set(
   "task_httpc.c"
   "timer_tick.c"
   "nvs_op.c"
+  "cmd_system.c"
 )
 set(
   COMPONENT_ADD_INCLUDEDIRS 

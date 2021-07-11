@@ -417,6 +417,7 @@ static esp_err_t register_manufacture_command(void) {
 static void cmd_task(void *pvParameter) {
     ESP_ERROR_CHECK(esp_console_register_help_command());
     ESP_ERROR_CHECK(register_manufacture_command());
+    ESP_ERROR_CHECK(register_system());
 
     for (;;) {
         /* Main loop */
