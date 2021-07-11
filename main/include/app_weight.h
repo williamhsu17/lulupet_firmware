@@ -114,13 +114,22 @@ void weight_set_cali_val(uint32_t range_floor, uint32_t range_ceiling,
 void weight_list_cali_val_ram(void);
 
 /**
- * @brief List the weight calibated value in the ram.
+ * @brief List the weight calibated value.
  *
- * @param range_floor[in] Would like to display structure of weight_cali_cb.
+ * @param cb[in] weight_cali_cb structure.
  *
  * @retval none
  */
 void weight_list_cali_val(weight_cali_cb *cb);
+
+/**
+ * @brief Dump the weight configration value.
+ *
+ * @param cfg_v1[in] weight_conf_ver1_t structure.
+ *
+ * @retval none
+ */
+void weight_dump_weight_conf_v1(weight_conf_ver1_t *cfg_v1);
 
 /**
  * @brief Load weight calibration data from nvs into ram
