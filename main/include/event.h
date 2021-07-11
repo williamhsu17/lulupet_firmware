@@ -7,7 +7,8 @@
 
 #define FOREACH_EVENT(X)                                                       \
     X(LULUPET_EVENT_KEY)                                                       \
-    X(LULUPET_EVENT_TAKE_PHOTO)
+    X(LULUPET_EVENT_TAKE_PHOTO)                                                \
+    X(LULUPET_EVENT_OTA)
 
 #define GEN_ENUM(v) v,
 

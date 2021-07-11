@@ -80,7 +80,7 @@ static char *weight_fsm_name[] = {"start", "standby", "jump", "bigjump",
 weight_task_cb w_task_cb;
 
 // static function prototype
-static void weight_post_evnet(esp_event_loop_handle_t event_loop, float weight,
+static void weight_post_event(esp_event_loop_handle_t event_loop, float weight,
                               rawdata_eventid eventid);
 static float weight_calculate_internal(float adc, float weight_coefficeint);
 static void weight_get(void);
@@ -104,7 +104,7 @@ static esp_err_t esp_err_print(esp_err_t esp_err, const char *file,
     return esp_err;
 }
 
-static void weight_post_evnet(esp_event_loop_handle_t event_loop, float weight,
+static void weight_post_event(esp_event_loop_handle_t event_loop, float weight,
                               rawdata_eventid eventid) {
 
     weight_take_photo_event_t evt;
@@ -289,7 +289,7 @@ static void weight_fsm_goto_bigjump(void) {
     board_led_ctrl(LED_TYPE_IR, true); // turn on IR led
     task_data.period_ms = w_task_cb.conf->bigjump_period_ms;
     task_data.period_cnt = 0;
-    weight_post_evnet(task_data.evt_loop, w_task_cb.now_weight_g,
+    weight_post_event(task_data.evt_loop, w_task_cb.now_weight_g,
                       RAWDATA_EVENTID_CAT_IN);
 
     // fsm change
@@ -308,7 +308,7 @@ static void weight_fsm_check_postevent(void) {
             TAG, "cat druing time: %d ms",
             task_data.period_cnt *
                 w_task_cb.conf->bigjump_period_ms); // record cat during time
-        weight_post_evnet(task_data.evt_loop,
+        weight_post_event(task_data.evt_loop,
                           (w_task_cb.now_weight_g - w_task_cb.ref_weight_g),
                           RAWDATA_EVENTID_CAT_OUT);
         weight_fsm_goto_standby();

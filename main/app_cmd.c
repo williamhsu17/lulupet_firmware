@@ -10,10 +10,12 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "app_cmd.h"
 #include "include/app_weight.h"
 #include "include/board_driver.h"
+#include "include/task_httpc.h"
 #include "include/util.h"
+
+#include "include/app_cmd.h"
 
 #define TAG "cmd"
 
@@ -69,6 +71,7 @@ struct {
 } cmd_weight_set_cali_args;
 
 extern weight_task_cb w_task_cb;
+static esp_event_loop_handle_t static_event_loop;
 
 static int cmd_led_set(int argc, char **argv);
 #if (FUNC_WEIGHT_FAKE)
@@ -79,6 +82,18 @@ static int cmd_weight_get_val(int argc, char **argv);
 static int cmd_key_status(int argc, char **argv);
 static int cmd_pir_pwr(int argc, char **argv);
 static int cmd_pir_status(int argc, char **argv);
+
+static int cmd_ota(int argc, char **argv) {
+
+    esp_err_t esp_err = httpc_ota_post_event(static_event_loop);
+
+    if (esp_err == ESP_OK)
+        printf("ok\n");
+    else
+        printf("err: %s\n", esp_err_to_name(esp_err));
+
+    return 0;
+}
 
 static int cmd_pir_pwr(int argc, char **argv) {
     esp_err_t err = ESP_OK;
@@ -383,6 +398,13 @@ static esp_err_t register_manufacture_command(void) {
             .func = &cmd_pir_pwr,
             .argtable = &cmd_pir_pwr_args,
         },
+        {
+            .command = "ota",
+            .help = "test ota when httpc has enabled",
+            .hint = NULL,
+            .func = &cmd_ota,
+            .argtable = NULL,
+        }
     };
 
     for (int i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++) {
@@ -467,7 +489,9 @@ static void console_init() {
     linenoiseHistorySetMaxLen(100);
 }
 
-void app_cmd_main(void) {
+void app_cmd_main(esp_event_loop_handle_t event_loop) {
+    static_event_loop = event_loop;
+
     console_init();
 
     printf(BANNER, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);

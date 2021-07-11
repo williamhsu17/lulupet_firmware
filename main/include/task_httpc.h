@@ -9,6 +9,8 @@ extern "C" {
 
 void start_httpc_task(esp_event_loop_handle_t loop);
 
+esp_err_t httpc_ota_post_event(esp_event_loop_handle_t event_loop);
+
 #ifdef __cplusplus
 }
 #endif

@@ -230,6 +230,9 @@ extern "C" {
 #define HTTP_RAW_URL "http://lulupet.williamhsu.com.tw/rawdata"
 #define HTTP_ENABLE_URL "http://lulupet.williamhsu.com.tw/litter/enable/"
 
+#define HTTP_OTA_UPDATE_LATEST_URL                                             \
+    "http://lulupet.williamhsu.com.tw/ota_update/latest"
+
 #define HTTPS_PHOTO_URL "https://lulupet.williamhsu.com.tw/imageHelper/"
 #define HTTPS_ENABLE_URL "https://lulupet.williamhsu.com.tw/litter/enable/"
 
