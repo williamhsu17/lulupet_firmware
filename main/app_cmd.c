@@ -11,7 +11,9 @@
 #include <string.h>
 
 #include "include/app_weight.h"
+#include "include/app_wifi.h"
 #include "include/board_driver.h"
+#include "include/nvs_op.h"
 #include "include/task_httpc.h"
 #include "include/util.h"
 
@@ -73,6 +75,8 @@ struct {
 extern weight_task_cb w_task_cb;
 static esp_event_loop_handle_t static_event_loop;
 
+static int cmd_nvs_read(int argc, char **argv);
+static int cmd_ota(int argc, char **argv);
 static int cmd_led_set(int argc, char **argv);
 #if (FUNC_WEIGHT_FAKE)
 static int cmd_weight_condition_set(int argc, char **argv);
@@ -82,6 +86,38 @@ static int cmd_weight_get_val(int argc, char **argv);
 static int cmd_key_status(int argc, char **argv);
 static int cmd_pir_pwr(int argc, char **argv);
 static int cmd_pir_status(int argc, char **argv);
+
+static int cmd_nvs_read(int argc, char **argv) {
+    // weight_cali_cb
+    weight_cali_cb weight_cali;
+    if (nvs_cali_read_weight_clai_cb(&weight_cali) != ESP_OK) {
+        printf("weight_clai_cb did not exist\n");
+    }
+
+    nvs_read_wifichecked();
+
+    // wificonfig
+    wifi_config_t wifi_cfg;
+    if (nvs_read_wifi_config(&wifi_cfg) != ESP_OK) {
+        printf("wificonfig did not exist\n");
+    }
+
+    // applid, apptoken
+    char lid_get[NVS_LULUPET_LID_LEN];
+    char token_get[NVS_LULUPET_TOKEN_LEN];
+    if (nvs_read_lid_token(lid_get, sizeof(lid_get), token_get,
+                           sizeof(token_get)) != ESP_OK) {
+        printf("applid, apptoken did not exist\n");
+    }
+
+    // nvs_read_weight_conf
+    weight_conf_ver1_t weight_conf_v1;
+    if (nvs_read_weight_conf((void *)&weight_conf_v1, 1) != ESP_OK) {
+        printf("weight_cfg_v1 did not exist\n");
+    }
+
+    return 0;
+}
 
 static int cmd_ota(int argc, char **argv) {
 
@@ -403,6 +439,13 @@ static esp_err_t register_manufacture_command(void) {
             .help = "test ota when httpc has enabled",
             .hint = NULL,
             .func = &cmd_ota,
+            .argtable = NULL,
+        },
+        {
+            .command = "nvs_read",
+            .help = "read nvs content",
+            .hint = NULL,
+            .func = &cmd_nvs_read,
             .argtable = NULL,
         }
     };

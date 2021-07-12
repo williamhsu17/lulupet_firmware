@@ -15,7 +15,9 @@
 #define NVS_WIFI_CHECK "wifichecked"
 #define NVS_APP_LID "applid"
 #define NVS_APP_TOKEN "apptoken"
+#define NVS_WEIGHT_CONF_V1 "weight_cfg_v1"
 
+/* nvs_cali nvs_cali_weight define */
 #define NVS_CALI_PARTITION "nvs_cali"
 #define NVA_WEIGHT_CALI_NAMESPACE "nvs_cali_weight"
 #define NVS_WEIGHT_CALI_VAL "weight_cali_cb"
@@ -61,12 +63,12 @@ esp_err_t nvs_cali_read_weight_clai_cb(weight_cali_cb *cali) {
     esp_err = nvs_get_blob(h, NVS_WEIGHT_CALI_VAL, cali, &len);
     if (esp_err != ESP_OK) {
         esp_err_print(esp_err, __func__, __LINE__);
-        goto FINAL;
+        goto _end;
     }
 
     weight_list_cali_val(cali);
 
-FINAL:
+_end:
     nvs_close(h);
     return esp_err;
 }
@@ -88,16 +90,16 @@ esp_err_t nvs_cali_write_weight_clai_cb(weight_cali_cb *cali) {
         nvs_set_blob(h, NVS_WEIGHT_CALI_VAL, cali, sizeof(weight_cali_cb));
     if (esp_err != ESP_OK) {
         esp_err_print(esp_err, __func__, __LINE__);
-        goto FINAL;
+        goto _end;
     }
 
     esp_err = nvs_commit(h);
     if (esp_err != ESP_OK) {
         esp_err_print(esp_err, __func__, __LINE__);
-        goto FINAL;
+        goto _end;
     }
 
-FINAL:
+_end:
     nvs_close(h);
     return esp_err;
 }
@@ -185,17 +187,20 @@ esp_err_t nvs_read_lid_token(char *lid, uint32_t lid_len, char *token,
 
     esp_err = nvs_get_blob(handle, NVS_APP_LID, lid, &lid_len);
     if (esp_err != ESP_OK) {
-        return esp_err_print(esp_err, __func__, __LINE__);
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
     }
     esp_err = nvs_get_blob(handle, NVS_APP_TOKEN, token, &token_len);
     if (esp_err != ESP_OK) {
-        return esp_err_print(esp_err, __func__, __LINE__);
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
     }
     ESP_LOGI(TAG, "nvs lid   : %s", lid);
     ESP_LOGI(TAG, "nvs token : %s", token);
 
+_end:
     nvs_close(handle);
-    return ESP_OK;
+    return esp_err;
 }
 
 esp_err_t nvs_read_wifi_config(wifi_config_t *sta_config) {
@@ -211,14 +216,16 @@ esp_err_t nvs_read_wifi_config(wifi_config_t *sta_config) {
     uint32_t len = sizeof(wifi_config_t);
     esp_err = nvs_get_blob(handle, NVS_WIFI_SETTING, sta_config, &len);
     if (esp_err != ESP_OK) {
-        return esp_err_print(esp_err, __func__, __LINE__);
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
     }
 
     ESP_LOGI(TAG, "nvs read WiFi configure ssid:%s passwd:%s",
              sta_config->sta.ssid, sta_config->sta.password);
 
+_end:
     nvs_close(handle);
-    return ESP_OK;
+    return esp_err;
 }
 
 esp_err_t nvs_write_wifi_val(int32_t set_value, wifi_config_t *wifi_config) {
@@ -234,25 +241,25 @@ esp_err_t nvs_write_wifi_val(int32_t set_value, wifi_config_t *wifi_config) {
     esp_err = nvs_set_i32(handle, NVS_WIFI_CHECK, set_value);
     if (esp_err != ESP_OK) {
         esp_err_print(esp_err, __func__, __LINE__);
-        goto FINAL;
+        goto _end;
     }
     ESP_LOGI(TAG, "save wifi_config into nvs");
     esp_err = nvs_set_blob(handle, NVS_WIFI_SETTING, wifi_config,
                            sizeof(wifi_config_t));
     if (esp_err != ESP_OK) {
         esp_err_print(esp_err, __func__, __LINE__);
-        goto FINAL;
+        goto _end;
     }
 
     esp_err = nvs_commit(handle);
     if (esp_err != ESP_OK) {
         esp_err_print(esp_err, __func__, __LINE__);
-        goto FINAL;
+        goto _end;
     }
 
-FINAL:
+_end:
     nvs_close(handle);
-    return ESP_OK;
+    return esp_err;
 }
 
 esp_err_t nvs_write_lid_token(char *lid, uint32_t lid_len, char *token,
@@ -274,22 +281,129 @@ esp_err_t nvs_write_lid_token(char *lid, uint32_t lid_len, char *token,
     esp_err = nvs_set_blob(handle, NVS_APP_LID, lid, lid_len);
     if (esp_err != ESP_OK) {
         esp_err_print(esp_err, __func__, __LINE__);
-        goto FINAL;
+        goto _end;
     }
     ESP_LOGI(TAG, "save token: %s into nvs", token);
     esp_err = nvs_set_blob(handle, NVS_APP_TOKEN, token, token_len);
     if (esp_err != ESP_OK) {
         esp_err_print(esp_err, __func__, __LINE__);
-        goto FINAL;
+        goto _end;
     }
 
     esp_err = nvs_commit(handle);
     if (esp_err != ESP_OK) {
         esp_err_print(esp_err, __func__, __LINE__);
-        goto FINAL;
+        goto _end;
     }
 
-FINAL:
+_end:
     nvs_close(handle);
-    return ESP_OK;
+    return esp_err;
+}
+
+esp_err_t nvs_read_weight_conf(void *conf, int version) {
+    nvs_handle_t handle;
+    esp_err_t esp_err;
+    weight_conf_ver1_t *weight_cfg = NULL;
+
+    if (conf == NULL) {
+        return esp_err_print(ESP_ERR_INVALID_ARG, __func__, __LINE__);
+    }
+
+    if (version == 1) {
+        weight_cfg = (weight_conf_ver1_t *)conf;
+    } else {
+        return esp_err_print(ESP_ERR_INVALID_ARG, __func__, __LINE__);
+    }
+
+    esp_err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    if (version == 1) {
+    }
+    uint32_t len = sizeof(weight_conf_ver1_t);
+    esp_err = nvs_get_blob(handle, NVS_WEIGHT_CONF_V1, weight_cfg, &len);
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    ESP_LOGI(TAG, "%s ok", __func__);
+
+    weight_dump_weight_conf_v1(weight_cfg);
+
+_end:
+    nvs_close(handle);
+    return esp_err;
+}
+
+esp_err_t nvs_write_weight_conf(void *conf, int version) {
+    nvs_handle_t handle;
+    esp_err_t esp_err;
+    weight_conf_ver1_t *weight_cfg = NULL;
+
+    if (conf == NULL) {
+        return esp_err_print(ESP_ERR_INVALID_ARG, __func__, __LINE__);
+    }
+
+    esp_err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
+    if (esp_err != ESP_OK) {
+        return esp_err_print(esp_err, __func__, __LINE__);
+    }
+
+    if (version == 1) {
+        weight_cfg = (weight_conf_ver1_t *)conf;
+    } else {
+        return esp_err_print(ESP_ERR_INVALID_ARG, __func__, __LINE__);
+    }
+
+    esp_err = nvs_set_blob(handle, NVS_WEIGHT_CONF_V1, weight_cfg,
+                           sizeof(weight_conf_ver1_t));
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    esp_err = nvs_commit(handle);
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    ESP_LOGI(TAG, "%s ok", __func__);
+
+_end:
+    nvs_close(handle);
+    return esp_err;
+}
+
+esp_err_t nvs_reset_weight_conf(void) {
+    nvs_handle_t handle;
+    esp_err_t esp_err;
+
+    esp_err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
+    if (esp_err != ESP_OK) {
+        return esp_err_print(esp_err, __func__, __LINE__);
+    }
+
+    esp_err = nvs_erase_key(handle, NVS_WEIGHT_CONF_V1);
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    esp_err = nvs_commit(handle);
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    ESP_LOGI(TAG, "%s ok", __func__);
+
+_end:
+    nvs_close(handle);
+    return esp_err;
 }

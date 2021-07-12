@@ -355,9 +355,12 @@ static esp_err_t weight_conf_init(weight_task_cb *task) {
         if ((task->conf = malloc(sizeof(weight_conf_ver1_t))) == NULL) {
             return esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
         }
-        // TODO: Load from nvs. If not exist in nvs, use default value and save
-        // into NVS
-        weight_conf_init_v1(w_task_cb.conf);
+        if (nvs_read_weight_conf((void *)task->conf, 1) != ESP_OK) {
+            weight_conf_init_v1(task->conf);
+            nvs_write_weight_conf((void *)task->conf, 1);
+        }
+
+        weight_dump_weight_conf_v1(task->conf);
     } else {
         return ESP_FAIL;
     }
@@ -481,6 +484,25 @@ void weight_list_cali_val(weight_cali_cb *cb) {
         // printf("weight_cali[%d]: %32s %32s\n", i, range_str, formula_str);
         ESP_LOGI(TAG, "weight_cali[%d]: %32s %32s", i, range_str, formula_str);
     }
+}
+
+void weight_dump_weight_conf_v1(weight_conf_ver1_t *cfg_v1) {
+    if (cfg_v1 == NULL)
+        return;
+    ESP_LOGI(TAG, "weight_cfg:");
+    ESP_LOGI(TAG, "\t version: %u", cfg_v1->version);
+    ESP_LOGI(TAG, "\t standby_period_ms: %u", cfg_v1->standby_period_ms);
+    ESP_LOGI(TAG, "\t standby_active_weight_g: %.3f",
+             cfg_v1->standby_active_weight_g);
+    ESP_LOGI(TAG, "\t jump_period_ms: %u", cfg_v1->jump_period_ms);
+    ESP_LOGI(TAG, "\t jump_pause_times: %u", cfg_v1->jump_pause_times);
+    ESP_LOGI(TAG, "\t jump_chk: %u", cfg_v1->jump_chk);
+    ESP_LOGI(TAG, "\t jump_to_standby_chk: %u", cfg_v1->jump_to_standby_chk);
+    ESP_LOGI(TAG, "\t jump_to_bigjump_chk: %u", cfg_v1->jump_to_bigjump_chk);
+    ESP_LOGI(TAG, "\t jump_cat_weight_g: %.3f", cfg_v1->jump_cat_weight_g);
+    ESP_LOGI(TAG, "\t bigjump_period_ms: %u", cfg_v1->bigjump_period_ms);
+    ESP_LOGI(TAG, "\t postevent_period_ms: %u", cfg_v1->postevent_period_ms);
+    ESP_LOGI(TAG, "\t postevnet_chk: %u", cfg_v1->postevnet_chk);
 }
 
 esp_err_t weight_load_nvs_cali_val(void) {
