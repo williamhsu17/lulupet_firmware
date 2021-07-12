@@ -210,7 +210,7 @@ static void sntp_obtain_time(void) {
     time_t now = 0;
     struct tm timeinfo = {0};
     int retry = 0;
-    const int retry_count = 10;
+    const int retry_count = 20;
 
     xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true,
                         portMAX_DELAY);

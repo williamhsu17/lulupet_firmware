@@ -23,10 +23,13 @@ esp_err_t nvs_read_lid_token(char *lid, uint32_t lid_len, char *token,
                              uint32_t token_len);
 esp_err_t nvs_write_lid_token(char *lid, uint32_t lid_len, char *token,
                               uint32_t token_len);
+esp_err_t nvs_reset_lid_token(void);
 
 esp_err_t nvs_read_weight_conf(void *conf, int version);
 esp_err_t nvs_write_weight_conf(void *conf, int version);
 esp_err_t nvs_reset_weight_conf(void);
+
+esp_err_t nvs_reset(void);
 
 #ifdef __cplusplus
 }

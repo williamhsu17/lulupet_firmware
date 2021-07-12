@@ -163,44 +163,6 @@ int32_t nvs_read_wifichecked(void) {
     return wifichecked_value;
 }
 
-esp_err_t nvs_reset_wifi_val(void) {
-    ESP_LOGI(TAG, "%s:L%d", __func__, __LINE__);
-    wifi_config_t wifi_config = {};
-    return nvs_write_wifi_val(0, &wifi_config);
-}
-
-esp_err_t nvs_read_lid_token(char *lid, uint32_t lid_len, char *token,
-                             uint32_t token_len) {
-    nvs_handle_t handle;
-    esp_err_t esp_err;
-
-    if (lid == NULL || token == NULL || lid_len == 0 || token_len == 0) {
-        return esp_err_print(ESP_ERR_INVALID_ARG, __func__, __LINE__);
-    }
-
-    esp_err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
-    if (esp_err != ESP_OK) {
-        return esp_err_print(esp_err, __func__, __LINE__);
-    }
-
-    esp_err = nvs_get_blob(handle, NVS_APP_LID, lid, &lid_len);
-    if (esp_err != ESP_OK) {
-        esp_err_print(esp_err, __func__, __LINE__);
-        goto _end;
-    }
-    esp_err = nvs_get_blob(handle, NVS_APP_TOKEN, token, &token_len);
-    if (esp_err != ESP_OK) {
-        esp_err_print(esp_err, __func__, __LINE__);
-        goto _end;
-    }
-    ESP_LOGI(TAG, "nvs lid   : %s", lid);
-    ESP_LOGI(TAG, "nvs token : %s", token);
-
-_end:
-    nvs_close(handle);
-    return esp_err;
-}
-
 esp_err_t nvs_read_wifi_config(wifi_config_t *sta_config) {
     nvs_handle_t handle;
     esp_err_t esp_err;
@@ -260,6 +222,44 @@ _end:
     return esp_err;
 }
 
+esp_err_t nvs_reset_wifi_val(void) {
+    ESP_LOGI(TAG, "%s:L%d", __func__, __LINE__);
+    wifi_config_t wifi_config = {};
+    return nvs_write_wifi_val(0, &wifi_config);
+}
+
+esp_err_t nvs_read_lid_token(char *lid, uint32_t lid_len, char *token,
+                             uint32_t token_len) {
+    nvs_handle_t handle;
+    esp_err_t esp_err;
+
+    if (lid == NULL || token == NULL || lid_len == 0 || token_len == 0) {
+        return esp_err_print(ESP_ERR_INVALID_ARG, __func__, __LINE__);
+    }
+
+    esp_err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
+    if (esp_err != ESP_OK) {
+        return esp_err_print(esp_err, __func__, __LINE__);
+    }
+
+    esp_err = nvs_get_blob(handle, NVS_APP_LID, lid, &lid_len);
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+    esp_err = nvs_get_blob(handle, NVS_APP_TOKEN, token, &token_len);
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+    ESP_LOGI(TAG, "nvs lid   : %s", lid);
+    ESP_LOGI(TAG, "nvs token : %s", token);
+
+_end:
+    nvs_close(handle);
+    return esp_err;
+}
+
 esp_err_t nvs_write_lid_token(char *lid, uint32_t lid_len, char *token,
                               uint32_t token_len) {
     nvs_handle_t handle;
@@ -293,6 +293,40 @@ esp_err_t nvs_write_lid_token(char *lid, uint32_t lid_len, char *token,
         esp_err_print(esp_err, __func__, __LINE__);
         goto _end;
     }
+
+_end:
+    nvs_close(handle);
+    return esp_err;
+}
+
+esp_err_t nvs_reset_lid_token(void) {
+    nvs_handle_t handle;
+    esp_err_t esp_err;
+
+    esp_err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
+    if (esp_err != ESP_OK) {
+        return esp_err_print(esp_err, __func__, __LINE__);
+    }
+
+    esp_err = nvs_erase_key(handle, NVS_APP_LID);
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    esp_err = nvs_erase_key(handle, NVS_APP_TOKEN);
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    esp_err = nvs_commit(handle);
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    ESP_LOGI(TAG, "%s ok", __func__);
 
 _end:
     nvs_close(handle);
@@ -403,5 +437,18 @@ esp_err_t nvs_reset_weight_conf(void) {
 
 _end:
     nvs_close(handle);
+    return esp_err;
+}
+
+esp_err_t nvs_reset(void) {
+    esp_err_t esp_err;
+    esp_err = nvs_reset_lid_token();
+    esp_err |= nvs_reset_weight_conf();
+    esp_err |= nvs_reset_wifi_val();
+
+    if (esp_err == ESP_OK) {
+        ESP_LOGI(TAG, "%s ok", __func__);
+    }
+
     return esp_err;
 }

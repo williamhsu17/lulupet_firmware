@@ -75,6 +75,7 @@ struct {
 extern weight_task_cb w_task_cb;
 static esp_event_loop_handle_t static_event_loop;
 
+static int cmd_nvs_reset(int argc, char **argv);
 static int cmd_nvs_read(int argc, char **argv);
 static int cmd_ota(int argc, char **argv);
 static int cmd_led_set(int argc, char **argv);
@@ -86,6 +87,16 @@ static int cmd_weight_get_val(int argc, char **argv);
 static int cmd_key_status(int argc, char **argv);
 static int cmd_pir_pwr(int argc, char **argv);
 static int cmd_pir_status(int argc, char **argv);
+
+static int cmd_nvs_reset(int argc, char **argv) {
+    if (nvs_reset() == ESP_OK) {
+        printf("ok\n");
+    } else {
+        printf("failed\n");
+    }
+
+    return 0;
+}
 
 static int cmd_nvs_read(int argc, char **argv) {
     // weight_cali_cb
@@ -446,6 +457,13 @@ static esp_err_t register_manufacture_command(void) {
             .help = "read nvs content",
             .hint = NULL,
             .func = &cmd_nvs_read,
+            .argtable = NULL,
+        },
+        {
+            .command = "nvs_reset",
+            .help = "reset all nvs content",
+            .hint = NULL,
+            .func = &cmd_nvs_reset,
             .argtable = NULL,
         }
     };
