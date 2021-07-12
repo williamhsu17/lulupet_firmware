@@ -173,6 +173,25 @@ static esp_err_t board_driver_init(void) {
     i2c_MCP23016_writeREG(I2C_MASTER_NUM, MCP23016_IODIR1_ADDR, port1_ctrl);
     i2c_MCP23016_readREG(I2C_MASTER_NUM, MCP23016_IODIR1_ADDR, &port1_ctrl);
 
+    // test weight sensor
+    float adc;
+    float g;
+    int retry = 3;
+    esp_err_t esp_err = ESP_OK;
+    while (retry) {
+        esp_err = board_get_weight(1, &adc, &g);
+        ESP_LOGI(TAG, "read weight sensor[%d]: %.3f, %.3f", retry, adc, g);
+        retry--;
+    }
+
+    if (esp_err != ESP_OK) {
+        ESP_LOGE(TAG, "read weight sensor failed L%d", __LINE__);
+        board_set_rgb_led(true, false, false);
+        while (1) {
+            vTaskDelay(100);
+        }
+    }
+
     return ESP_OK;
 }
 
