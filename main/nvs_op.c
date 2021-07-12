@@ -115,8 +115,6 @@ esp_err_t nvs_cali_reset_weight_clai_cb(void) {
 esp_err_t nvs_init(void) {
     esp_err_t esp_err;
 
-    ESP_LOGE(TAG, "sizeof(weight_cali_cb): %d\n\n\n", sizeof(weight_cali_cb));
-
 #if (FUNC_ERASE_NVS_BOOTUP)
     ESP_ERROR_CHECK(nvs_flash_erase());
 #endif
