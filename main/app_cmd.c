@@ -1,5 +1,6 @@
 #include "argtable3/argtable3.h"
 #include "driver/uart.h"
+#include "esp_camera.h"
 #include "esp_console.h"
 #include "esp_err.h"
 #include "esp_log.h"
@@ -10,6 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "include/app_camera.h"
 #include "include/app_weight.h"
 #include "include/app_wifi.h"
 #include "include/board_driver.h"
@@ -87,6 +89,25 @@ static int cmd_weight_get_val(int argc, char **argv);
 static int cmd_key_status(int argc, char **argv);
 static int cmd_pir_pwr(int argc, char **argv);
 static int cmd_pir_status(int argc, char **argv);
+
+static int cmd_photo_take(int argc, char **argv) {
+    time_t time_stamp;
+    camera_fb_t *fb = NULL;
+
+    time_stamp = time(NULL);
+    camera_take_photo(&fb);
+
+    if (fb->format != PIXFORMAT_JPEG) {
+        ESP_LOGE(TAG, "camera use the %d format", fb->format);
+        goto _end;
+    }
+
+_end:
+    if (fb) {
+        esp_camera_fb_return(fb);
+    }
+    return 0;
+}
 
 static int cmd_nvs_reset(int argc, char **argv) {
     if (nvs_reset() == ESP_OK) {
@@ -464,6 +485,13 @@ static esp_err_t register_manufacture_command(void) {
             .help = "reset all nvs content",
             .hint = NULL,
             .func = &cmd_nvs_reset,
+            .argtable = NULL,
+        },
+        {
+            .command = "photo_take",
+            .help = "take photo from camera module",
+            .hint = NULL,
+            .func = &cmd_photo_take,
             .argtable = NULL,
         }
     };
