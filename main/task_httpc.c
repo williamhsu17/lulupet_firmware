@@ -138,7 +138,7 @@ static void http_post_photo(esp_http_client_handle_t client, char *json_url_val,
 
     if (fb->format != PIXFORMAT_JPEG) {
         ESP_LOGE(TAG, "camera use the %d format", fb->format);
-        return;
+        goto http_post_photo_end;
     }
 
     // HTTP HEAD
