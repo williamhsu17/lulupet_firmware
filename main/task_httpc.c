@@ -46,8 +46,9 @@ static httpc_task_config_t task_conf;
 
 static esp_err_t esp_err_print(esp_err_t err, const char *func, uint32_t line);
 static esp_err_t http_event_handler(esp_http_client_event_t *evt);
-static void http_post_photo(esp_http_client_handle_t client, char *json_url_val,
-                            int json_url_val_len, time_t *timestamp);
+static void http_post_imageHelper(esp_http_client_handle_t client,
+                                  char *json_url_val, int json_url_val_len,
+                                  time_t *timestamp);
 static void http_post_raw(esp_http_client_handle_t client, char *json_url_val,
                           time_t timestamp,
                           weight_take_photo_event_t *take_photo_event);
@@ -115,8 +116,9 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
     return ESP_OK;
 }
 
-static void http_post_photo(esp_http_client_handle_t client, char *json_url_val,
-                            int json_url_val_len, time_t *timestamp) {
+static void http_post_imageHelper(esp_http_client_handle_t client,
+                                  char *json_url_val, int json_url_val_len,
+                                  time_t *timestamp) {
     bool client_open = false;
     int client_rd_len;
     char *payload_header = NULL;
@@ -186,7 +188,7 @@ static void http_post_photo(esp_http_client_handle_t client, char *json_url_val,
     esp_http_client_set_header(client, "Connection", "close");
     esp_http_client_set_header(client, "Content-Type", content_type);
     esp_http_client_set_header(client, "Content-Length", payload_length);
-    esp_http_client_set_url(client, HTTP_PHOTO_URL);
+    esp_http_client_set_url(client, HTTP_IMAGE_HELPLER_URL);
     esp_http_client_set_method(client, HTTP_METHOD_POST);
 
     if ((err = esp_http_client_open(client, content_length)) != ESP_OK) {
@@ -380,14 +382,8 @@ http_post_raw_end:
 }
 
 static void http_post_data(weight_take_photo_event_t *take_photo_event) {
-
-    ESP_LOGI(TAG, "Free Heap Internal is:  %d Byte",
-             heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-    ESP_LOGI(TAG, "Free Heap PSRAM    is:  %d Byte",
-             heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-
     esp_http_client_config_t config = {
-        .url = HTTP_PHOTO_URL,
+        .url = HTTP_IMAGE_HELPLER_URL,
         .event_handler = http_event_handler,
     };
 
@@ -405,7 +401,8 @@ static void http_post_data(weight_take_photo_event_t *take_photo_event) {
     }
 
     time_t unix_timestamp;
-    http_post_photo(client, json_url_val, JSON_URL_VAL_LEN, &unix_timestamp);
+    http_post_imageHelper(client, json_url_val, JSON_URL_VAL_LEN,
+                          &unix_timestamp);
     http_post_raw(client, json_url_val, unix_timestamp, take_photo_event);
 
     esp_http_client_cleanup(client);

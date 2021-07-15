@@ -226,7 +226,7 @@ extern "C" {
 
 // HTTP URL
 #define SERVER_URL "lulupet.williamhsu.com.tw"
-#define HTTP_PHOTO_URL "http://lulupet.williamhsu.com.tw/imageHelper/"
+#define HTTP_IMAGE_HELPLER_URL "http://lulupet.williamhsu.com.tw/imageHelper/"
 #define HTTP_RAW_URL "http://lulupet.williamhsu.com.tw/rawdata"
 #define HTTP_ENABLE_URL "http://lulupet.williamhsu.com.tw/litter/enable/"
 
