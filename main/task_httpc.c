@@ -406,7 +406,6 @@ static void http_post_data(weight_take_photo_event_t *take_photo_event) {
 
     time_t unix_timestamp;
     http_post_photo(client, json_url_val, JSON_URL_VAL_LEN, &unix_timestamp);
-    // vTaskDelay(pdMS_TO_TICKS(100));
     http_post_raw(client, json_url_val, unix_timestamp, take_photo_event);
 
     esp_http_client_cleanup(client);
@@ -701,6 +700,7 @@ static void httpc_task(void *pvParameter) {
             if (task_conf.weight_event_update) {
                 if (!app_wifi_check_connect(1000)) {
                     ESP_LOGE(TAG, "wifi disconnect");
+
                     ESP_LOGW(TAG, "TODO: save photo into ring buffer");
                 } else {
                     http_post_data(&task_conf.weight_take_photo_evt);
