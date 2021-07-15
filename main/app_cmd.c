@@ -91,10 +91,8 @@ static int cmd_pir_pwr(int argc, char **argv);
 static int cmd_pir_status(int argc, char **argv);
 
 static int cmd_photo_take(int argc, char **argv) {
-    time_t time_stamp;
     camera_fb_t *fb = NULL;
 
-    time_stamp = time(NULL);
     camera_take_photo(&fb);
 
     if (fb->format != PIXFORMAT_JPEG) {
