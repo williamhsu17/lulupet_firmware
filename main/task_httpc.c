@@ -49,10 +49,11 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt);
 static void http_post_imageHelper(esp_http_client_handle_t client,
                                   char *json_url_val, int json_url_val_len,
                                   time_t *timestamp);
-static void http_post_raw(esp_http_client_handle_t client, char *json_url_val,
-                          time_t timestamp,
-                          weight_take_photo_event_t *take_photo_event);
-static void http_post_data(weight_take_photo_event_t *take_photo_event);
+static void http_post_rawdata(esp_http_client_handle_t client,
+                              char *json_url_val, time_t timestamp,
+                              weight_take_photo_event_t *take_photo_event);
+static void
+http_send_photo_process(weight_take_photo_event_t *take_photo_event);
 static void httpc_task(void *pvParameter);
 
 static esp_err_t esp_err_print(esp_err_t err, const char *func, uint32_t line) {
@@ -297,9 +298,9 @@ http_post_photo_end:
     return;
 }
 
-static void http_post_raw(esp_http_client_handle_t client, char *json_url_val,
-                          time_t timestamp,
-                          weight_take_photo_event_t *take_photo_event) {
+static void http_post_rawdata(esp_http_client_handle_t client,
+                              char *json_url_val, time_t timestamp,
+                              weight_take_photo_event_t *take_photo_event) {
     int client_wr_len;
     int content_length;
     esp_err_t err;
@@ -318,7 +319,7 @@ static void http_post_raw(esp_http_client_handle_t client, char *json_url_val,
              take_photo_event->pir_val, json_url_val, timestamp);
     ESP_LOGI(TAG, "post data:\n%s", post_data_raw);
 
-    esp_http_client_set_url(client, HTTP_RAW_URL);
+    esp_http_client_set_url(client, HTTP_RAW_DATA_URL);
     esp_http_client_set_method(client, HTTP_METHOD_POST);
     esp_http_client_set_header(client, "accept", "application/json");
     esp_http_client_set_header(client, "Content-Type",
@@ -381,7 +382,8 @@ http_post_raw_end:
     }
 }
 
-static void http_post_data(weight_take_photo_event_t *take_photo_event) {
+static void
+http_send_photo_process(weight_take_photo_event_t *take_photo_event) {
     esp_http_client_config_t config = {
         .url = HTTP_IMAGE_HELPLER_URL,
         .event_handler = http_event_handler,
@@ -397,20 +399,20 @@ static void http_post_data(weight_take_photo_event_t *take_photo_event) {
     char *json_url_val = calloc(JSON_URL_VAL_LEN, sizeof(char));
     if (json_url_val == NULL) {
         esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
-        return;
+        goto _end;
     }
 
     time_t unix_timestamp;
     http_post_imageHelper(client, json_url_val, JSON_URL_VAL_LEN,
                           &unix_timestamp);
-    http_post_raw(client, json_url_val, unix_timestamp, take_photo_event);
+    http_post_rawdata(client, json_url_val, unix_timestamp, take_photo_event);
 
-    esp_http_client_cleanup(client);
-    ESP_LOGI(TAG, "http client cleanup");
-
+_end:
     if (json_url_val) {
         free(json_url_val);
     }
+    esp_http_client_cleanup(client);
+    ESP_LOGI(TAG, "http client cleanup");
 
     return;
 }
@@ -682,7 +684,7 @@ static void httpc_task(void *pvParameter) {
         event.eventid = RAWDATA_EVENTID_TEST;
         event.pir_val = board_get_pir_status();
         event.weight_g = weight_get_now_weight_int();
-        http_post_data(&event);
+        http_send_photo_process(&event);
         // capture_photo_only();
         ESP_LOGI(TAG, "http post data test : %d ok", i);
         i++;
@@ -700,7 +702,7 @@ static void httpc_task(void *pvParameter) {
 
                     ESP_LOGW(TAG, "TODO: save photo into ring buffer");
                 } else {
-                    http_post_data(&task_conf.weight_take_photo_evt);
+                    http_send_photo_process(&task_conf.weight_take_photo_evt);
                 }
                 task_conf.weight_event_update = false;
             }
