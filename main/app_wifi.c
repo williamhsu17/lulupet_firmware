@@ -280,7 +280,7 @@ bool app_wifi_check_connect(uint32_t wait_ms) {
     wifi_event_bits =
         xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true,
                             wait_ms / portTICK_PERIOD_MS);
-    ESP_LOGI(TAG, "wifi_event_bits: 0x%x", wifi_event_bits);
+    ESP_LOGD(TAG, "wifi_event_bits: 0x%x", wifi_event_bits);
     if ((wifi_event_bits & WIFI_CONNECTED_BIT)) {
         return true;
     } else {
