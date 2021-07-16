@@ -49,6 +49,7 @@ extern "C" {
 #define GPIO_OUTPUT_PIRPWR 33
 #define GPIO_OUTPUT_PIRPWR_PIN_SEL (1ULL << GPIO_OUTPUT_PIRPWR)
 #define ESP_INTR_FLAG_DEFAULT 0
+#define CAM_RING_BUF_SIZE 10
 
 #if CONFIG_CAMERA_MODEL_WROVER_KIT
 #define PWDN_GPIO_NUM -1
@@ -216,7 +217,6 @@ extern "C" {
 // MCP3221 ADC setting
 #define MCP3221_CHIP_ADDR 0x4b // 7-bit I2C address
 #define MCP3221_DATA_ADDR 0x0
-#define mcp3221_len 2
 
 // Function
 #define FUNC_CMD_TASK 1    // 1: run console command line interface
