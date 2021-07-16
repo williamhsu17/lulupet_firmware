@@ -223,6 +223,7 @@ extern "C" {
 #define FUNC_WEIGHT_FAKE 0 // 1: use fake condition to test fsm
 #define FUNC_ERASE_NVS_BOOTUP                                                  \
     0 // 1: nvs will be earesd during bootup for debugging blufi process
+#define FUNC_PHOTO_RINGBUFFER 1 // 1: photo will be saved when wifi dosconnected
 
 // HTTP URL
 #define SERVER_URL "lulupet.williamhsu.com.tw"
