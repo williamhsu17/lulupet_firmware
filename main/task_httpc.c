@@ -73,6 +73,7 @@ static int http_ota(char *ota_url, bool reboot);
 static httpc_photo_buf_t *http_photo_buf_pop(uint8_t idx);
 static bool http_photo_buf_get_loop(void);
 static uint8_t http_photo_buf_get_idx(void);
+static bool http_photo_buf_exist(void);
 static void http_photo_buf_init(void);
 
 static void httpc_task(void *pvParameter);
@@ -653,6 +654,13 @@ static bool http_photo_buf_get_loop(void) { return photo_ring_buf.loop; }
 
 static uint8_t http_photo_buf_get_idx(void) { return photo_ring_buf.idx; }
 
+static bool http_photo_buf_exist(void) {
+    if (photo_ring_buf.loop == false && photo_ring_buf.idx == 0)
+        return false;
+    else
+        return true;
+}
+
 static void http_photo_buf_init(void) {
     for (int i = 0; i < CAM_RING_BUF_SIZE; ++i) {
         httpc_photo_buf_t *photo_buf = &photo_ring_buf.buf[i];
@@ -696,22 +704,25 @@ static void httpc_task(void *pvParameter) {
 
     task_conf.task_enable = true;
 
+    bool wifi_connected = false;
+
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(HTTPC_TASK_PERIOD_MS));
         if (pdTRUE == xSemaphoreTake(task_conf.data_mutex, portMAX_DELAY)) {
+
+            if (app_wifi_check_connect(10)) {
+                wifi_connected = true;
+            } else {
+                wifi_connected = false;
+            }
+
             if (task_conf.weight_event_update) {
                 http_photo_buf_push(&task_conf.weight_take_photo_evt);
-                if (!app_wifi_check_connect(1000)) {
-                    ESP_LOGE(TAG, "wifi disconnect");
-                } else {
-                    http_send_photo_process();
-                }
                 task_conf.weight_event_update = false;
             }
+
             if (task_conf.ota_event_update) {
-                if (!app_wifi_check_connect(1000)) {
-                    ESP_LOGE(TAG, "wifi disconnect");
-                } else {
+                if (wifi_connected) {
                     char ota_url[256];
                     if (http_get_ota_update_latest(&task_conf.ota_evt, ota_url,
                                                    sizeof(ota_url)) != 0) {
@@ -721,9 +732,25 @@ static void httpc_task(void *pvParameter) {
                     if (http_ota(ota_url, 1) != 0) {
                         ESP_LOGE(TAG, "L%d", __LINE__);
                     }
+                } else {
+                    ESP_LOGE(TAG, "wifi disconnect");
                 }
                 task_conf.ota_event_update = false;
             }
+
+            if (wifi_connected) {
+                if (http_photo_buf_exist()) {
+                    http_send_photo_process();
+                }
+            }
+#if (!FUNC_PHOTO_RINGBUFFER)
+            if (!wifi_connected) {
+                if (http_photo_buf_exist()) {
+                    http_photo_buf_init();
+                }
+            }
+#endif
+
             xSemaphoreGive(task_conf.data_mutex);
         }
     }
@@ -811,6 +838,11 @@ void http_send_photo_process(void) {
 
     bool buf_loop = http_photo_buf_get_loop();
     uint8_t buf_start_idx = http_photo_buf_get_idx();
+
+    if (buf_loop == false && buf_start_idx == 0) {
+        ESP_LOGI(TAG, "without any photos in the buffer");
+        goto _end;
+    }
 
     if (buf_loop) {
         for (int i = buf_start_idx; i < CAM_RING_BUF_SIZE; ++i) {
