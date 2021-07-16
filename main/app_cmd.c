@@ -90,20 +90,19 @@ static int cmd_key_status(int argc, char **argv);
 static int cmd_pir_pwr(int argc, char **argv);
 static int cmd_pir_status(int argc, char **argv);
 
-static int cmd_photo_take(int argc, char **argv) {
-    camera_fb_t *fb = NULL;
+static int cmd_photo_send(int argc, char **argv) {
+    http_send_photo_process();
+    return 0;
+}
 
-    camera_take_photo(&fb);
+static int cmd_photo_push(int argc, char **argv) {
 
-    if (fb->format != PIXFORMAT_JPEG) {
-        ESP_LOGE(TAG, "camera use the %d format", fb->format);
-        goto _end;
-    }
+    weight_take_photo_event_t event;
+    event.eventid = RAWDATA_EVENTID_TEST;
+    event.pir_val = board_get_pir_status();
+    event.weight_g = weight_get_now_weight_int();
+    http_photo_buf_push(&event);
 
-_end:
-    if (fb) {
-        esp_camera_fb_return(fb);
-    }
     return 0;
 }
 
@@ -486,12 +485,20 @@ static esp_err_t register_manufacture_command(void) {
             .argtable = NULL,
         },
         {
-            .command = "photo_take",
-            .help = "take photo from camera module",
+            .command = "photo_push",
+            .help = "push photo into buffer",
             .hint = NULL,
-            .func = &cmd_photo_take,
+            .func = &cmd_photo_push,
+            .argtable = NULL,
+        },
+        {
+            .command = "photo_send",
+            .help = "send photo",
+            .hint = NULL,
+            .func = &cmd_photo_send,
             .argtable = NULL,
         }
+
     };
 
     for (int i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++) {
