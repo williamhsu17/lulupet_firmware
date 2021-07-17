@@ -49,6 +49,7 @@ extern "C" {
 #define GPIO_OUTPUT_PIRPWR 33
 #define GPIO_OUTPUT_PIRPWR_PIN_SEL (1ULL << GPIO_OUTPUT_PIRPWR)
 #define ESP_INTR_FLAG_DEFAULT 0
+#define CAM_RING_BUF_SIZE 10
 
 #if CONFIG_CAMERA_MODEL_WROVER_KIT
 #define PWDN_GPIO_NUM -1
@@ -172,7 +173,7 @@ extern "C" {
 // I2C configuration
 #define I2C_MASTER_SCL_IO 13         /*!< gpio number for I2C master clock */
 #define I2C_MASTER_SDA_IO 4          /*!< gpio number for I2C master data  */
-#define I2C_MASTER_NUM I2C_NUMBER(1) /*!< I2C port number for master dev */
+#define I2C_MASTER_NUM I2C_NUMBER(0) /*!< I2C port number for master dev */
 #define I2C_MASTER_FREQ_HZ 100000    /*!< I2C master clock frequency */
 #define I2C_MASTER_TX_BUF_DISABLE 0  /*!< I2C master doesn't need buffer */
 #define I2C_MASTER_RX_BUF_DISABLE 0  /*!< I2C master doesn't need buffer */
@@ -216,18 +217,18 @@ extern "C" {
 // MCP3221 ADC setting
 #define MCP3221_CHIP_ADDR 0x4b // 7-bit I2C address
 #define MCP3221_DATA_ADDR 0x0
-#define mcp3221_len 2
 
 // Function
 #define FUNC_CMD_TASK 1    // 1: run console command line interface
 #define FUNC_WEIGHT_FAKE 0 // 1: use fake condition to test fsm
 #define FUNC_ERASE_NVS_BOOTUP                                                  \
     0 // 1: nvs will be earesd during bootup for debugging blufi process
+#define FUNC_PHOTO_RINGBUFFER 1 // 1: photo will be saved when wifi dosconnected
 
 // HTTP URL
 #define SERVER_URL "lulupet.williamhsu.com.tw"
-#define HTTP_PHOTO_URL "http://lulupet.williamhsu.com.tw/imageHelper/"
-#define HTTP_RAW_URL "http://lulupet.williamhsu.com.tw/rawdata"
+#define HTTP_IMAGE_HELPLER_URL "http://lulupet.williamhsu.com.tw/imageHelper/"
+#define HTTP_RAW_DATA_URL "http://lulupet.williamhsu.com.tw/rawdata"
 #define HTTP_ENABLE_URL "http://lulupet.williamhsu.com.tw/litter/enable/"
 
 #define HTTP_OTA_UPDATE_LATEST_URL                                             \

@@ -1,5 +1,6 @@
 #include "argtable3/argtable3.h"
 #include "driver/uart.h"
+#include "esp_camera.h"
 #include "esp_console.h"
 #include "esp_err.h"
 #include "esp_log.h"
@@ -10,6 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "include/app_camera.h"
 #include "include/app_weight.h"
 #include "include/app_wifi.h"
 #include "include/board_driver.h"
@@ -87,6 +89,22 @@ static int cmd_weight_get_val(int argc, char **argv);
 static int cmd_key_status(int argc, char **argv);
 static int cmd_pir_pwr(int argc, char **argv);
 static int cmd_pir_status(int argc, char **argv);
+
+static int cmd_photo_send(int argc, char **argv) {
+    http_send_photo_process();
+    return 0;
+}
+
+static int cmd_photo_push(int argc, char **argv) {
+
+    weight_take_photo_event_t event;
+    event.eventid = RAWDATA_EVENTID_TEST;
+    event.pir_val = board_get_pir_status();
+    event.weight_g = weight_get_now_weight_int();
+    http_photo_buf_push(&event);
+
+    return 0;
+}
 
 static int cmd_nvs_reset(int argc, char **argv) {
     if (nvs_reset() == ESP_OK) {
@@ -465,7 +483,22 @@ static esp_err_t register_manufacture_command(void) {
             .hint = NULL,
             .func = &cmd_nvs_reset,
             .argtable = NULL,
+        },
+        {
+            .command = "photo_push",
+            .help = "push photo into buffer",
+            .hint = NULL,
+            .func = &cmd_photo_push,
+            .argtable = NULL,
+        },
+        {
+            .command = "photo_send",
+            .help = "send photo",
+            .hint = NULL,
+            .func = &cmd_photo_send,
+            .argtable = NULL,
         }
+
     };
 
     for (int i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++) {

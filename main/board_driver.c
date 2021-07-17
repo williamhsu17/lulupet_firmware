@@ -266,7 +266,7 @@ static esp_err_t board_cam_init(void) {
     // init with high specs to pre-allocate larger buffers
     config.frame_size = FRAMESIZE_UXGA;
     config.jpeg_quality = 12;
-    config.fb_count = 2;
+    config.fb_count = CAM_RING_BUF_SIZE+1;
 
     // camera init
     err = esp_camera_init(&config);

@@ -359,8 +359,6 @@ static esp_err_t weight_conf_init(weight_task_cb *task) {
             weight_conf_init_v1(task->conf);
             nvs_write_weight_conf((void *)task->conf, 1);
         }
-
-        weight_dump_weight_conf_v1(task->conf);
     } else {
         return ESP_FAIL;
     }
