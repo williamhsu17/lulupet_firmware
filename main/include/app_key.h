@@ -19,6 +19,7 @@ typedef struct {
 
 char *app_key_event_type_str(key_event_type_e type);
 void app_key_main(esp_event_loop_handle_t loop);
+void key_check_wakeup(void);
 
 #ifdef __cplusplus
 }
