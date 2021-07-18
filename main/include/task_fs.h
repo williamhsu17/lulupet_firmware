@@ -8,6 +8,8 @@ extern "C" {
 #include "esp_event.h"
 
 void fs_task_start(esp_event_loop_handle_t loop);
+bool fs_get_mount(void);
+void fs_get_fatfs_usage(size_t *out_total_bytes, size_t *out_free_bytes);
 
 #ifdef __cplusplus
 }

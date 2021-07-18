@@ -23,6 +23,8 @@ typedef struct {
 typedef struct {
     esp_event_loop_handle_t evt_loop;
 
+    bool fs_mount;
+
     fs_task_event_t ota_evt;
     SemaphoreHandle_t data_mutex;
 } fs_task_config_t;
@@ -68,6 +70,12 @@ static esp_err_t fs_mount(void) {
         esp_err_print(esp_err, __func__, __LINE__);
     }
 
+    // Print FAT FS size information
+    size_t bytes_total, bytes_free;
+    fs_get_fatfs_usage(&bytes_total, &bytes_free);
+    ESP_LOGI(TAG, "FAT FS: %d kB total, %d kB free", bytes_total / 1024,
+             bytes_free / 1024);
+
     return esp_err;
 }
 
@@ -78,7 +86,9 @@ static void fs_task(void *pvParameter) {
     esp_event_handler_register_with(conf->evt_loop, LULUPET_EVENT_BASE,
                                     ESP_EVENT_ANY_ID, fs_event_handler, NULL);
 
+    task_conf.fs_mount = false;
     fs_mount();
+    task_conf.fs_mount = true;
 
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(FS_TASK_PERIOD_MS));
@@ -92,4 +102,23 @@ static void fs_task(void *pvParameter) {
 void fs_task_start(esp_event_loop_handle_t event_loop) {
     task_conf.evt_loop = event_loop;
     xTaskCreate(&fs_task, "fs_task", 4096, (void *)&task_conf, 0, NULL);
+}
+
+bool fs_get_mount(void) { return task_conf.fs_mount; }
+
+void fs_get_fatfs_usage(size_t *out_total_bytes, size_t *out_free_bytes) {
+    FATFS *fs;
+    size_t free_clusters;
+    int res = f_getfree("0:", &free_clusters, &fs);
+    assert(res == FR_OK);
+    size_t total_sectors = (fs->n_fatent - 2) * fs->csize;
+    size_t free_sectors = free_clusters * fs->csize;
+
+    // assuming the total size is < 4GiB, should be true for SPI Flash
+    if (out_total_bytes != NULL) {
+        *out_total_bytes = total_sectors * fs->ssize;
+    }
+    if (out_free_bytes != NULL) {
+        *out_free_bytes = free_sectors * fs->ssize;
+    }
 }
