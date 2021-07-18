@@ -51,6 +51,11 @@ struct {
 } cmd_pir_pwr_args;
 
 struct {
+    struct arg_int *dst;
+    struct arg_end *end;
+} cmd_photo_push_args;
+
+struct {
     struct arg_str *led_type;
     struct arg_int *en;
     struct arg_end *end;
@@ -75,6 +80,11 @@ struct {
     struct arg_end *end;
 } cmd_weight_set_cali_args;
 
+struct {
+    struct arg_str *filename;
+    struct arg_end *end;
+} cmd_fs_rm_args;
+
 extern weight_task_cb w_task_cb;
 static esp_event_loop_handle_t static_event_loop;
 
@@ -91,6 +101,60 @@ static int cmd_key_status(int argc, char **argv);
 static int cmd_pir_pwr(int argc, char **argv);
 static int cmd_pir_status(int argc, char **argv);
 
+static int cmd_fs_rm(int argc, char **argv);
+static int cmd_fs_status(int argc, char **argv);
+
+static void listdir(const char *name, int indent) {
+    DIR *dir;
+    struct dirent *entry;
+
+    char *path = calloc(1024, 1);
+    if (path == NULL) {
+        ESP_LOGE(TAG, "%s L%d", esp_err_to_name(ESP_ERR_NO_MEM), __LINE__);
+        return;
+    }
+
+    if (!(dir = opendir(name))) {
+        if (path) {
+            free(path);
+        }
+        return;
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type == DT_DIR) {
+            if (strcmp(entry->d_name, ".") == 0 ||
+                strcmp(entry->d_name, "..") == 0)
+                continue;
+            snprintf(path, 1024, "%s/%s", name, entry->d_name);
+            printf("%*s[%s]\n", indent, "", entry->d_name);
+            listdir(path, indent + 2);
+        } else {
+            printf("%*s- %s\n", indent, "", entry->d_name);
+        }
+    }
+
+    if (path) {
+        free(path);
+    }
+
+    closedir(dir);
+}
+
+static int cmd_fs_rm(int argc, char **argv) {
+    PARSE_ARG(cmd_fs_rm_args);
+
+    struct stat file_stat;
+    if (stat(cmd_fs_rm_args.filename->sval[0], &file_stat) == 0) {
+        printf("rm %s\n", cmd_fs_rm_args.filename->sval[0]);
+        remove(cmd_fs_rm_args.filename->sval[0]);
+    } else {
+        printf("%s did not exist\n", cmd_fs_rm_args.filename->sval[0]);
+    }
+
+    return 0;
+}
+
 static int cmd_fs_status(int argc, char **argv) {
     if (fs_get_mount() != true) {
         printf("fs isn't be mounted yet\n");
@@ -101,6 +165,8 @@ static int cmd_fs_status(int argc, char **argv) {
     printf("fs: free/total = %d/%d kB\n", bytes_free / 1024,
            bytes_total / 1024);
 
+    listdir("/fs", 0);
+
     return 0;
 }
 
@@ -110,14 +176,29 @@ static int cmd_photo_send(int argc, char **argv) {
 }
 
 static int cmd_photo_push(int argc, char **argv) {
+    PARSE_ARG(cmd_photo_push_args);
+
+    if (cmd_photo_push_args.dst->ival[0] != 0 &&
+        cmd_photo_push_args.dst->ival[0] != 1) {
+        arg_print_glossary(stderr, (void **)&cmd_photo_push_args, NULL);
+        goto cmd_photo_push_err;
+    }
 
     weight_take_photo_event_t event;
     event.eventid = RAWDATA_EVENTID_TEST;
     event.pir_val = board_get_pir_status();
     event.weight_g = weight_get_now_weight_int();
-    http_photo_buf_push(&event);
+    if (cmd_photo_push_args.dst->ival[0] == 0) {
+        http_photo_buf_push(&event);
+    } else {
+        http_photo_buf_save_fs(&event);
+    }
 
     return 0;
+
+cmd_photo_push_err:
+    arg_print_errors(stderr, cmd_photo_push_args.end, argv[0]);
+    return -1;
 }
 
 static int cmd_nvs_reset(int argc, char **argv) {
@@ -418,6 +499,13 @@ static esp_err_t register_manufacture_command(void) {
     cmd_pir_pwr_args.en = arg_int1("e", "enable", "<0|1>", "enable pir");
     cmd_pir_pwr_args.end = arg_end(1);
 
+    cmd_photo_push_args.dst =
+        arg_int1("c", "destination", "<0|1>", "0:ram, 1:fs");
+    cmd_photo_push_args.end = arg_end(1);
+
+    cmd_fs_rm_args.filename = arg_str1("f", "filename", "<string>", "filename");
+    cmd_fs_rm_args.end = arg_end(1);
+
     const esp_console_cmd_t cmds[] = {
         {
             .command = "led_set",
@@ -503,7 +591,7 @@ static esp_err_t register_manufacture_command(void) {
             .help = "push photo into buffer",
             .hint = NULL,
             .func = &cmd_photo_push,
-            .argtable = NULL,
+            .argtable = &cmd_photo_push_args,
         },
         {
             .command = "photo_send",
@@ -518,7 +606,15 @@ static esp_err_t register_manufacture_command(void) {
             .hint = NULL,
             .func = &cmd_fs_status,
             .argtable = NULL,
+        },
+        {
+            .command = "fs_rm",
+            .help = "remove filesystem file",
+            .hint = NULL,
+            .func = &cmd_fs_rm,
+            .argtable = &cmd_fs_rm_args,
         }
+
     };
 
     for (int i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++) {
