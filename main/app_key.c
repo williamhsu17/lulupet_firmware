@@ -41,6 +41,22 @@ static char *key_event_name[] = {
     "press_2_times_within_3_sec",
 };
 
+static xQueueHandle gpio_evt_queue = NULL;
+
+static void IRAM_ATTR gpio_isr_handler(void *arg) {
+    uint32_t gpio_num = (uint32_t)arg;
+    xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
+}
+
+static void gpio_task_example(void *arg) {
+    uint32_t io_num;
+    for (;;) {
+        if (xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
+            printf("GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num));
+        }
+    }
+}
+
 static void key_post_evnet(esp_event_loop_handle_t event_loop,
                            key_event_type_e type) {
 
@@ -69,7 +85,7 @@ static void key_task(void *pvParameter) {
     // set SYS_DET pin
     gpio_config_t io_conf;
     // disable interrupt
-    io_conf.intr_type = GPIO_PIN_INTR_DISABLE;
+    io_conf.intr_type = GPIO_PIN_INTR_NEGEDGE;
     // set as output mode
     io_conf.mode = GPIO_MODE_INPUT;
     // bit mask of the pins that you want to set
@@ -84,6 +100,16 @@ static void key_task(void *pvParameter) {
     if (!rtc_gpio_is_valid_gpio(SYS_DET_PIN)) {
         ESP_LOGE(TAG, "GPIO %d is not an RTC IO", SYS_DET_PIN);
     }
+
+    // create a queue to handle gpio event from isr
+    gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+    // start gpio task
+    xTaskCreate(gpio_task_example, "gpio_task_example", 2048, NULL, 10, NULL);
+
+    // install gpio isr service
+    gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
+    // hook isr handler for specific gpio pin
+    gpio_isr_handler_add(SYS_DET_PIN, gpio_isr_handler, (void *)SYS_DET_PIN);
 
     for (;;) {
         key_press = board_get_key_status();
@@ -179,6 +205,33 @@ void app_key_main(esp_event_loop_handle_t event_loop) {
     task_conf.evt_loop = event_loop;
 
     xTaskCreate(&key_task, "key_task", 4096, (void *)&task_conf, 4, NULL);
+}
+
+void check_sys_det_low(void) {
+    // set SYS_DET pin
+    gpio_config_t io_conf;
+    // disable interrupt
+    io_conf.intr_type = GPIO_PIN_INTR_DISABLE;
+    // set as output mode
+    io_conf.mode = GPIO_MODE_INPUT;
+    // bit mask of the pins that you want to set
+    io_conf.pin_bit_mask = (1ULL << SYS_DET_PIN);
+    // disable pull-down mode
+    io_conf.pull_down_en = 0;
+    // disable pull-up mode
+    io_conf.pull_up_en = 0;
+    // configure GPIO with the given settings
+    gpio_config(&io_conf);
+
+    if (gpio_get_level(SYS_DET_PIN) == 0) {
+        // goto deep sleep mode
+        const int ext_wakeup_pin_1 = SYS_DET_PIN;
+        const uint64_t ext_wakeup_pin_1_mask = 1ULL << ext_wakeup_pin_1;
+        ESP_LOGW(TAG, "Enabling EXT1 wakeup on pins GPIO%d", ext_wakeup_pin_1);
+        esp_sleep_enable_ext1_wakeup(ext_wakeup_pin_1_mask,
+                                     ESP_EXT1_WAKEUP_ANY_HIGH);
+        esp_deep_sleep_start();
+    }
 }
 
 void key_check_wakeup(void) {
