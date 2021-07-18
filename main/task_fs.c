@@ -1,6 +1,7 @@
-#include "cJSON.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "esp_partition.h"
+#include "esp_vfs_fat.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -50,12 +51,34 @@ static void fs_event_handler(void *arg, esp_event_base_t base, int32_t event_id,
     xSemaphoreGive(task_conf.data_mutex);
 }
 
+static wl_handle_t s_wl_handle = WL_INVALID_HANDLE;
+
+static esp_err_t fs_mount(void) {
+    const char *partition_label = "storage";
+    const esp_vfs_fat_mount_config_t mount_config = {
+        .max_files = 4,
+        .format_if_mount_failed = true,
+        .allocation_unit_size = CONFIG_WL_SECTOR_SIZE};
+    ESP_LOGW(TAG, "start mount fs");
+    esp_err_t esp_err = esp_vfs_fat_spiflash_mount("/fs", partition_label,
+                                                   &mount_config, &s_wl_handle);
+    ESP_LOGW(TAG, "end mount fs");
+
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+    }
+
+    return esp_err;
+}
+
 static void fs_task(void *pvParameter) {
     fs_task_config_t *conf = (fs_task_config_t *)pvParameter;
 
     task_conf.data_mutex = xSemaphoreCreateMutex();
     esp_event_handler_register_with(conf->evt_loop, LULUPET_EVENT_BASE,
                                     ESP_EVENT_ANY_ID, fs_event_handler, NULL);
+
+    fs_mount();
 
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(FS_TASK_PERIOD_MS));
