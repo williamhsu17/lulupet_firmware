@@ -24,6 +24,7 @@
 #include <soc/rtc_cntl_reg.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/time.h>
 
 #include "sdkconfig.h"
 
@@ -234,6 +235,8 @@ static struct {
     struct arg_end *end;
 } deep_sleep_args;
 
+extern RTC_DATA_ATTR struct timeval sleep_enter_time;
+
 static int deep_sleep(int argc, char **argv) {
     int nerrors = arg_parse(argc, argv, (void **)&deep_sleep_args);
     if (nerrors != 0) {
@@ -272,6 +275,7 @@ static int deep_sleep(int argc, char **argv) {
     rtc_gpio_isolate(GPIO_NUM_12);
 #endif // CONFIG_IDF_TARGET_ESP32
 
+    gettimeofday(&sleep_enter_time, NULL);
     esp_deep_sleep_start();
 }
 

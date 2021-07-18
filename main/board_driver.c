@@ -140,6 +140,42 @@ static esp_err_t board_pir_init_gpio(void) {
     return ESP_OK;
 }
 
+static esp_err_t i2c_write_sacn(i2c_port_t i2c_num, uint16_t addr,
+                                uint32_t timeout_ms) {
+    i2c_cmd_handle_t *cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, (addr << 1) | I2C_MASTER_WRITE, true);
+    i2c_master_stop(cmd);
+    esp_err_t esp_err =
+        i2c_master_cmd_begin(i2c_num, cmd, timeout_ms / portTICK_RATE_MS);
+    i2c_cmd_link_delete(cmd);
+    return esp_err;
+}
+
+static void i2c_scan(i2c_port_t i2c_num) {
+    printf("i2c_%d\n", i2c_num);
+    printf("     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f");
+    // Scan the existing i2c slave devices except the preserved address. Please
+    // refer to https://www.nxp.com/docs/en/user-guide/UM10204.pdf 3.2.9.
+
+    for (int i = 0; i < 8; i++) {
+        if (i % 16 == 0)
+            printf("\n%.2x:", i);
+        printf(" --");
+    }
+
+    for (int i = 8; i < 0x78; i++) {
+        if (i % 16 == 0)
+            printf("\n%.2x:", i);
+        if (i2c_write_sacn(i2c_num, i, 10) == ESP_OK) {
+            printf(" %.2x", i);
+        } else {
+            printf(" --");
+        }
+    }
+    printf("\n");
+}
+
 static esp_err_t board_driver_init(void) {
     esp_err_t err;
 
@@ -148,6 +184,9 @@ static esp_err_t board_driver_init(void) {
 
     // Init the GPIO for IR detection
     err |= board_pir_init_gpio();
+
+    // I2C scan
+    i2c_scan(I2C_MASTER_NUM);
 
     // Init RGB LED and Light ON Max white
     err |= i2c_BCT3253_writeREG(I2C_MASTER_NUM, 0x00, 0x01); // chip RESET
@@ -266,7 +305,7 @@ static esp_err_t board_cam_init(void) {
     // init with high specs to pre-allocate larger buffers
     config.frame_size = FRAMESIZE_UXGA;
     config.jpeg_quality = 12;
-    config.fb_count = CAM_RING_BUF_SIZE+1;
+    config.fb_count = CAM_RING_BUF_SIZE + 1;
 
     // camera init
     err = esp_camera_init(&config);

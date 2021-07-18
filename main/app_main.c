@@ -59,6 +59,15 @@ static esp_err_t event_loop_init(void) {
 }
 
 void app_main() {
+    esp_reset_reason_t reset_reason = esp_reset_reason();
+
+    if (reset_reason == ESP_RST_BROWNOUT) {
+        ESP_LOGW(TAG, "reset_brownout");
+        check_sys_det_low();
+    }
+
+    key_check_wakeup();
+
     board_init();
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     ESP_ERROR_CHECK(event_loop_init());

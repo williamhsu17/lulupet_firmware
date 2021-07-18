@@ -181,6 +181,8 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event) {
 static void sntp_time_check(void) {
     time_t now;
     struct tm timeinfo;
+    char strftime_buf[64];
+
     time(&now);
     localtime_r(&now, &timeinfo);
     // Is time set? If not, tm_year will be (1970 - 1900).
@@ -192,14 +194,14 @@ static void sntp_time_check(void) {
         // update 'now' variable with current time
         time(&now);
     }
-    char strftime_buf[64];
 
-    // Set timezone to China Standard Time
+    // Set timezone to CST-8
     setenv("TZ", "CST-8", 1);
     tzset();
+
     localtime_r(&now, &timeinfo);
     strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-    ESP_LOGI(TAG, "The current date/time in Taipei is: %s", strftime_buf);
+    ESP_LOGI(TAG, "The current date/time is: %s", strftime_buf);
 
     time_t seconds;
     seconds = time(NULL);

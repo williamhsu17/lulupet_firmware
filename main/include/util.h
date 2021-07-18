@@ -166,6 +166,9 @@ extern "C" {
 #define PCLK_GPIO_NUM CONFIG_CAMERA_PIN_PCLK
 #endif
 
+// System power GPIO
+#define SYS_DET_PIN 15
+
 // I2C setting
 #define _I2C_NUMBER(num) I2C_NUM_##num
 #define I2C_NUMBER(num) _I2C_NUMBER(num)
@@ -217,6 +220,9 @@ extern "C" {
 // MCP3221 ADC setting
 #define MCP3221_CHIP_ADDR 0x4b // 7-bit I2C address
 #define MCP3221_DATA_ADDR 0x0
+
+// RV3029 RTC setting
+#define RTC3029_CHIP_ADDR 0x51
 
 // Function
 #define FUNC_CMD_TASK 1    // 1: run console command line interface
