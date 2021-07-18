@@ -16,6 +16,7 @@
 #include "include/app_wifi.h"
 #include "include/board_driver.h"
 #include "include/nvs_op.h"
+#include "include/task_fs.h"
 #include "include/task_httpc.h"
 #include "include/util.h"
 
@@ -89,6 +90,19 @@ static int cmd_weight_get_val(int argc, char **argv);
 static int cmd_key_status(int argc, char **argv);
 static int cmd_pir_pwr(int argc, char **argv);
 static int cmd_pir_status(int argc, char **argv);
+
+static int cmd_fs_status(int argc, char **argv) {
+    if (fs_get_mount() != true) {
+        printf("fs isn't be mounted yet\n");
+    }
+
+    size_t bytes_total, bytes_free;
+    fs_get_fatfs_usage(&bytes_total, &bytes_free);
+    printf("fs: free/total = %d/%d kB\n", bytes_free / 1024,
+           bytes_total / 1024);
+
+    return 0;
+}
 
 static int cmd_photo_send(int argc, char **argv) {
     http_send_photo_process();
@@ -497,8 +511,14 @@ static esp_err_t register_manufacture_command(void) {
             .hint = NULL,
             .func = &cmd_photo_send,
             .argtable = NULL,
+        },
+        {
+            .command = "fs_status",
+            .help = "get filesystem status",
+            .hint = NULL,
+            .func = &cmd_fs_status,
+            .argtable = NULL,
         }
-
     };
 
     for (int i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++) {
