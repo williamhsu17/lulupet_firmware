@@ -31,6 +31,7 @@
 #include "include/app_led.h"
 #include "include/app_weight.h"
 #include "include/app_wifi.h"
+#include "include/task_fs.h"
 #include "include/board_driver.h"
 #include "include/nvs_op.h"
 #include "include/timer_tick.h"
@@ -79,6 +80,7 @@ void app_main() {
     app_cmd_main(service_event_loop); // Init command line interface
 #endif
 
+    fs_task_start(service_event_loop);   // Init fs task
     app_key_main(service_event_loop);
     app_led_main();                      // Init led task
     app_weight_main(service_event_loop); // Init weight task
