@@ -14,6 +14,7 @@ set(
   "blufi_security.c" 
   "board_driver.c"
   "task_httpc.c"
+  "task_fs.c"
   "timer_tick.c"
   "nvs_op.c"
   "cmd_system.c"
