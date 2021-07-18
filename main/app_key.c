@@ -48,7 +48,7 @@ static void IRAM_ATTR gpio_isr_handler(void *arg) {
     xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
 }
 
-static void gpio_task_example(void *arg) {
+static void gpio_sys_det_task(void *arg) {
     uint32_t io_num;
     for (;;) {
         if (xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
@@ -104,10 +104,10 @@ static void key_task(void *pvParameter) {
     // create a queue to handle gpio event from isr
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
     // start gpio task
-    xTaskCreate(gpio_task_example, "gpio_task_example", 2048, NULL, 10, NULL);
+    xTaskCreate(gpio_sys_det_task, "gpio_sys_det_task", 2048, NULL, 10, NULL);
 
     // install gpio isr service
-    gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
+    // gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
     // hook isr handler for specific gpio pin
     gpio_isr_handler_add(SYS_DET_PIN, gpio_isr_handler, (void *)SYS_DET_PIN);
 
