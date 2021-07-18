@@ -15,6 +15,7 @@
 #include "include/app_wifi.h"
 #include "include/board_driver.h"
 #include "include/event.h"
+#include "include/task_fs.h"
 #include "include/task_httpc.h"
 #include "include/util.h"
 
@@ -804,6 +805,7 @@ void http_photo_buf_push(weight_take_photo_event_t *take_photo_event) {
     if (photo_buf->fb->format != PIXFORMAT_JPEG) {
         ESP_LOGE(TAG, "camera use the %d format",
                  photo_buf->fb->format); // TODO: record into fetal error nvs
+        esp_camera_fb_return(photo_buf->fb);
         return;
     }
 
@@ -815,6 +817,26 @@ void http_photo_buf_push(weight_take_photo_event_t *take_photo_event) {
 
     ESP_LOGI(TAG, "Photo ring buffer push out idx[%u] loop[%d] L%d",
              photo_ring_buf.idx, photo_ring_buf.loop, __LINE__);
+}
+
+void http_photo_buf_save_fs(weight_take_photo_event_t *take_photo_event) {
+    time_t unix_timestamp;
+    camera_fb_t *fb;
+    ESP_LOGI(TAG, "%s start", __func__);
+    unix_timestamp = time(NULL);
+    camera_take_photo(&fb);
+    if (fb->format != PIXFORMAT_JPEG) {
+        ESP_LOGE(TAG, "camera use the %d format",
+                 fb->format); // TODO: record into fetal error nvs
+        esp_camera_fb_return(fb);
+        return;
+    }
+
+    fs_save_photo(take_photo_event, unix_timestamp, fb);
+
+    esp_camera_fb_return(fb);
+    ESP_LOGI(TAG, "%s end", __func__);
+    return;
 }
 
 void http_send_photo_process(void) {
