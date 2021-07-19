@@ -186,7 +186,7 @@ esp_err_t fs_save_photo(weight_take_photo_event_t *take_photo_evt,
     fprintf(f, "eventid:%d\n", take_photo_evt->eventid);
     fprintf(f, "weight_g:%d\n", take_photo_evt->weight_g);
     fprintf(f, "pir_val:%d\n", take_photo_evt->pir_val);
-    fprintf(f, "timestamp:%ld", timestamp);
+    fprintf(f, "timestamp:%ld\n", timestamp);
     fclose(f);
     ESP_LOGI(TAG, "close file: %s", file_name);
 
