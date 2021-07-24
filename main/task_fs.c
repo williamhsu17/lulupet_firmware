@@ -167,7 +167,6 @@ esp_err_t fs_save_photo(weight_take_photo_event_t *take_photo_evt,
 
     snprintf(file_name, sizeof(file_name), "%s/%ld.cfg", FS_ROOT_NAME,
              timestamp);
-    // snprintf(file_name, sizeof(file_name), "%s/1234.cfg", FS_ROOT_NAME);
 
     ESP_LOGI(TAG, "opening file: %s", file_name);
     FILE *f = NULL;

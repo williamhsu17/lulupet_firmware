@@ -189,9 +189,9 @@ static int cmd_photo_push(int argc, char **argv) {
     event.pir_val = board_get_pir_status();
     event.weight_g = weight_get_now_weight_int();
     if (cmd_photo_push_args.dst->ival[0] == 0) {
-        http_photo_buf_push(&event);
+        http_photo_buf_push_ram(&event);
     } else {
-        http_photo_buf_save_fs(&event);
+        http_photo_buf_push_fs(&event);
     }
 
     return 0;

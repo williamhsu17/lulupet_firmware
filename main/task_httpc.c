@@ -696,7 +696,7 @@ static void httpc_task(void *pvParameter) {
         event.eventid = RAWDATA_EVENTID_TEST;
         event.pir_val = board_get_pir_status();
         event.weight_g = weight_get_now_weight_int();
-        http_photo_buf_push(&event);
+        http_photo_buf_push_ram(&event);
         http_send_photo_process();
         ESP_LOGI(TAG, "http post data test: %d ok", i);
         i++;
@@ -718,7 +718,11 @@ static void httpc_task(void *pvParameter) {
             }
 
             if (task_conf.weight_event_update) {
-                http_photo_buf_push(&task_conf.weight_take_photo_evt);
+                if (wifi_connected) {
+                    http_photo_buf_push_ram(&task_conf.weight_take_photo_evt);
+                } else {
+                }
+
                 task_conf.weight_event_update = false;
             }
 
@@ -785,7 +789,7 @@ _err:
     return ESP_ERR_INVALID_ARG;
 }
 
-void http_photo_buf_push(weight_take_photo_event_t *take_photo_event) {
+void http_photo_buf_push_ram(weight_take_photo_event_t *take_photo_event) {
     ESP_LOGI(TAG, "Photo ring buffer push in idx[%u] loop[%d] L%d",
              photo_ring_buf.idx, photo_ring_buf.loop, __LINE__);
 
@@ -819,7 +823,7 @@ void http_photo_buf_push(weight_take_photo_event_t *take_photo_event) {
              photo_ring_buf.idx, photo_ring_buf.loop, __LINE__);
 }
 
-void http_photo_buf_save_fs(weight_take_photo_event_t *take_photo_event) {
+void http_photo_buf_push_fs(weight_take_photo_event_t *take_photo_event) {
     time_t unix_timestamp;
     camera_fb_t *fb;
     ESP_LOGI(TAG, "%s start", __func__);
