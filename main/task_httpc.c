@@ -862,9 +862,8 @@ void http_send_photo_process(void) {
         goto _end;
     }
 
-    httpc_photo_buf_t *photo_buf = NULL;
-
     // check photo in the ram
+    httpc_photo_buf_t *photo_buf_ram = NULL;
     bool buf_loop = http_photo_buf_get_loop_ram();
     uint8_t buf_start_idx = http_photo_buf_get_idx_ram();
 
@@ -876,15 +875,16 @@ void http_send_photo_process(void) {
     if (buf_loop) {
         for (int i = buf_start_idx; i < CAM_RING_BUF_SIZE; ++i) {
             ESP_LOGI(TAG, "Send Photo ram buf[%d]", i);
-            photo_buf = http_photo_buf_pop_ram(i);
-            http_send_photo_buf(photo_buf, client, json_url_val,
+            photo_buf_ram = http_photo_buf_pop_ram(i);
+            http_send_photo_buf(photo_buf_ram, client, json_url_val,
                                 JSON_URL_VAL_LEN);
         }
     }
     for (int i = 0; i < buf_start_idx; ++i) {
         ESP_LOGI(TAG, "Send Photo ram buf[%d]", i);
-        photo_buf = http_photo_buf_pop_ram(i);
-        http_send_photo_buf(photo_buf, client, json_url_val, JSON_URL_VAL_LEN);
+        photo_buf_ram = http_photo_buf_pop_ram(i);
+        http_send_photo_buf(photo_buf_ram, client, json_url_val,
+                            JSON_URL_VAL_LEN);
     }
 
 _end:
