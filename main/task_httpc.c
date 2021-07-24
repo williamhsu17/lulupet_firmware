@@ -66,7 +66,8 @@ static void http_post_imageHelper(esp_http_client_handle_t client,
 static void http_post_rawdata(esp_http_client_handle_t client,
                               char *json_url_val, time_t timestamp,
                               weight_take_photo_event_t *take_photo_event);
-static void http_send_photo_buf(uint8_t idx, esp_http_client_handle_t client,
+static void http_send_photo_buf(httpc_photo_buf_t *photo_buf,
+                                esp_http_client_handle_t client,
                                 char *json_url_val, int json_url_val_len);
 static int http_get_ota_update_latest(httpc_ota_event_t *event, char *ota_url,
                                       int ota_url_len);
@@ -392,10 +393,9 @@ http_post_raw_end:
     }
 }
 
-static void http_send_photo_buf(uint8_t idx, esp_http_client_handle_t client,
+static void http_send_photo_buf(httpc_photo_buf_t *photo_buf,
+                                esp_http_client_handle_t client,
                                 char *json_url_val, int json_url_val_len) {
-    ESP_LOGI(TAG, "Send Photo buf[%d]", idx);
-    httpc_photo_buf_t *photo_buf = http_photo_buf_pop(idx);
     http_post_imageHelper(client, json_url_val, JSON_URL_VAL_LEN,
                           photo_buf->fb);
     http_post_rawdata(client, json_url_val, photo_buf->unix_timestamp,
@@ -862,6 +862,9 @@ void http_send_photo_process(void) {
         goto _end;
     }
 
+    httpc_photo_buf_t *photo_buf = NULL;
+
+    // check photo in the ram
     bool buf_loop = http_photo_buf_get_loop();
     uint8_t buf_start_idx = http_photo_buf_get_idx();
 
@@ -872,11 +875,16 @@ void http_send_photo_process(void) {
 
     if (buf_loop) {
         for (int i = buf_start_idx; i < CAM_RING_BUF_SIZE; ++i) {
-            http_send_photo_buf(i, client, json_url_val, JSON_URL_VAL_LEN);
+            ESP_LOGI(TAG, "Send Photo ram buf[%d]", i);
+            photo_buf = http_photo_buf_pop(i);
+            http_send_photo_buf(photo_buf, client, json_url_val,
+                                JSON_URL_VAL_LEN);
         }
     }
     for (int i = 0; i < buf_start_idx; ++i) {
-        http_send_photo_buf(i, client, json_url_val, JSON_URL_VAL_LEN);
+        ESP_LOGI(TAG, "Send Photo ram buf[%d]", i);
+        photo_buf = http_photo_buf_pop(i);
+        http_send_photo_buf(photo_buf, client, json_url_val, JSON_URL_VAL_LEN);
     }
 
 _end:
