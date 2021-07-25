@@ -88,6 +88,8 @@ void camera_take_photo(camera_fb_t **fb) {
              pixformat_str[(*fb)->format]);
 }
 
+void camera_return_photo(camera_fb_t **fb) { esp_camera_fb_return(*fb); }
+
 void app_camera_main(void) {
     init_cam_gpio();
 
