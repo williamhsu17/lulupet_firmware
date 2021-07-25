@@ -221,6 +221,7 @@ static void sntp_obtain_time(void) {
     for (int retry_times = 0; retry_times < 3; ++retry_times) {
         sntp_check();
         // wait for time to be set
+        retry = 0;
         for (;;) {
             ESP_LOGI(TAG, "waiting for system time to be set... (%d/%d)", retry,
                      retry_count);
