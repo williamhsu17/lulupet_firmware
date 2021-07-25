@@ -113,8 +113,8 @@ static void register_restart() {
 /** 'free' command prints available heap memory */
 
 static int free_mem(int argc, char **argv) {
-    printf("PSRAM free size: %.3f kB\n",
-           1.0 * heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024.0);
+    printf("PSRAM free size: %i Bytes\n",
+           heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     printf("PSRAM minimum free size: %.3f kB\n",
            1.0 * heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024.0);
     printf("PSRAM largest free size: %.3f kB\n",
