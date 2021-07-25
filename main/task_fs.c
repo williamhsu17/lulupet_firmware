@@ -1,6 +1,7 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_partition.h"
+#include "esp_vfs_dev.h"
 #include "esp_vfs_fat.h"
 
 #include "freertos/FreeRTOS.h"
@@ -36,10 +37,15 @@ static fs_task_config_t task_conf;
 static esp_err_t esp_err_print(esp_err_t err, const char *func, uint32_t line);
 static void fs_event_handler(void *arg, esp_event_base_t base, int32_t event_id,
                              void *event_data);
-
 static void list_data_partitions(void);
 static esp_err_t fs_mount(void);
 static void fs_task(void *pvParameter);
+static bool fs_cfg_file_check_param(bool *exist, char *line, char *param,
+                                    char *result);
+static esp_err_t fs_parser_photo_cfg(char *content,
+                                     weight_take_photo_event_t *take_photo_evt,
+                                     time_t *timestamp, camera_fb_t *fb);
+static int fs_get_file_size(char *fime_name);
 
 static wl_handle_t s_wl_handle = WL_INVALID_HANDLE;
 
@@ -119,6 +125,117 @@ static void fs_task(void *pvParameter) {
             xSemaphoreGive(task_conf.data_mutex);
         }
     }
+}
+
+static bool fs_cfg_file_check_param(bool *exist, char *line, char *param,
+                                    char *result) {
+    int prefix_len;
+    if (!(*exist) && strstr(line, param) != NULL) {
+        prefix_len = strlen(param);
+        memcpy(result, line + prefix_len, strlen(line) - prefix_len);
+        ESP_LOGI(TAG, "param[%s] result[%s]", param, result);
+        (*exist) = true;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+static esp_err_t fs_parser_photo_cfg(char *content,
+                                     weight_take_photo_event_t *take_photo_evt,
+                                     time_t *timestamp, camera_fb_t *fb) {
+    char *start_p;
+    char *end_p;
+    char tmp_str[64];
+    char line_str[256];
+
+    bool len_exist = false;
+    bool width_exist = false;
+    bool height_exist = false;
+    bool format_exist = false;
+    bool tv_sec_exist = false;
+    bool tv_usec_exist = false;
+    bool eventid_exist = false;
+    bool weight_g_exist = false;
+    bool pir_val_exist = false;
+    bool timestamp_exist = false;
+
+    ESP_LOGD(TAG, "strlen(content): %d", strlen(content));
+
+    start_p = content;
+    for (int i = 0; i < strlen(content); ++i) {
+        if (content[i] == '\n') {
+            end_p = content + i;
+            memset(line_str, 0x00, sizeof(line_str));
+            memcpy(line_str, start_p, end_p - start_p);
+            ESP_LOGD(TAG, "line_str: %s", line_str);
+
+            memset(tmp_str, 0x00, sizeof(tmp_str));
+            if (fs_cfg_file_check_param(&len_exist, line_str,
+                                        "len:", tmp_str)) {
+                fb->len = atoi(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&width_exist, line_str,
+                                        "width:", tmp_str)) {
+                fb->width = atoi(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&height_exist, line_str,
+                                        "height:", tmp_str)) {
+                fb->height = atoi(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&format_exist, line_str,
+                                        "format:", tmp_str)) {
+                fb->format = atoi(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&tv_sec_exist, line_str,
+                                        "tv_sec:", tmp_str)) {
+                fb->timestamp.tv_sec = atoi(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&tv_usec_exist, line_str,
+                                        "tv_usec:", tmp_str)) {
+                fb->timestamp.tv_usec = atoi(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&eventid_exist, line_str,
+                                        "eventid:", tmp_str)) {
+                take_photo_evt->eventid = atoi(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&weight_g_exist, line_str,
+                                        "weight_g:", tmp_str)) {
+                take_photo_evt->weight_g = atoi(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&pir_val_exist, line_str,
+                                        "pir_val:", tmp_str)) {
+                take_photo_evt->pir_val = atoi(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&timestamp_exist, line_str,
+                                        "timestamp:", tmp_str)) {
+                (*timestamp) = atoi(tmp_str);
+            }
+
+            if (len_exist & width_exist & height_exist & format_exist &
+                tv_sec_exist & tv_usec_exist & eventid_exist & weight_g_exist &
+                pir_val_exist & timestamp_exist)
+                return ESP_OK;
+
+            start_p = content + i + 1;
+        }
+    }
+
+    return ESP_FAIL;
+}
+
+static int fs_get_file_size(char *fime_name) {
+    struct stat st;
+
+    if (stat(fime_name, &st) != 0) {
+        ESP_LOGE(TAG, "file: %s can not get size", fime_name);
+        esp_err_print(ESP_ERR_NOT_FOUND, __func__, __LINE__);
+        return 0;
+    }
+
+    ESP_LOGI(TAG, "file[%s] size: %li", fime_name, st.st_size);
+
+    return st.st_size;
 }
 
 void fs_task_start(esp_event_loop_handle_t event_loop) {
@@ -205,4 +322,146 @@ esp_err_t fs_save_photo(weight_take_photo_event_t *take_photo_evt,
     }
 
     return ESP_OK;
+}
+
+esp_err_t fs_load_photo(weight_take_photo_event_t *take_photo_evt,
+                        time_t *timestamp, camera_fb_t *fb) {
+    if (take_photo_evt == NULL || fb == NULL) {
+        return esp_err_print(ESP_ERR_INVALID_ARG, __func__, __LINE__);
+    }
+
+    esp_err_t esp_err = ESP_OK;
+    DIR *dir;
+    struct dirent *entry;
+    char cfg_file_name[384];
+    char jpg_file_name[256];
+    bool find_cfg = false;
+
+    if (!(dir = opendir(FS_ROOT_NAME))) {
+        return esp_err_print(ESP_ERR_NOT_FOUND, __func__, __LINE__);
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type == DT_DIR) {
+            if (strcmp(entry->d_name, ".") == 0 ||
+                strcmp(entry->d_name, "..") == 0)
+                continue;
+        } else {
+            ESP_LOGI(TAG, "file: %s", entry->d_name);
+            if (strstr(entry->d_name, ".cfg") != NULL) {
+                find_cfg = true;
+                snprintf(cfg_file_name, sizeof(cfg_file_name), "%s/%s",
+                         FS_ROOT_NAME, entry->d_name);
+                break;
+            }
+        }
+    }
+
+    closedir(dir);
+
+    if (!find_cfg) {
+        return esp_err_print(ESP_ERR_NOT_FOUND, __func__, __LINE__);
+    }
+
+    bool cfg_rm = false;
+    bool jpg_rm = false;
+    char *cfg_content = NULL;
+    char prefix_name[64];
+    int cfg_file_size;
+    int jpg_file_size;
+    size_t read_size;
+    FILE *cfg_f = NULL;
+    FILE *jpg_f = NULL;
+
+    // check corresponding .jpg file exist
+    char *tmp_p = strstr(cfg_file_name, ".cfg");
+    if (tmp_p == NULL) {
+        esp_err = ESP_ERR_NOT_FOUND;
+        esp_err_print(esp_err, __func__, __LINE__);
+        cfg_rm = true;
+        goto _end;
+    }
+    memcpy(prefix_name, cfg_file_name, tmp_p - cfg_file_name);
+    snprintf(jpg_file_name, sizeof(jpg_file_name), "%s.jpg", prefix_name);
+    if ((jpg_file_size = fs_get_file_size(jpg_file_name)) == 0) {
+        esp_err = ESP_ERR_NOT_FOUND;
+        esp_err_print(esp_err, __func__, __LINE__);
+        cfg_rm = true;
+        goto _end;
+    }
+
+    // read & parser .cfg file
+    if ((cfg_file_size = fs_get_file_size(cfg_file_name)) == 0) {
+        esp_err = ESP_ERR_NOT_FOUND;
+        esp_err_print(esp_err, __func__, __LINE__);
+        cfg_rm = jpg_rm = true;
+        goto _end;
+    }
+
+    cfg_content = calloc(1, cfg_file_size + 8);
+    if (cfg_content == NULL) {
+        esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
+        goto _end;
+    }
+    if ((cfg_f = fopen(cfg_file_name, "rb")) == NULL) {
+        esp_err = ESP_ERR_NOT_FOUND;
+        esp_err_print(esp_err, __func__, __LINE__);
+        cfg_rm = jpg_rm = true;
+        goto _end;
+    }
+    read_size = fread(cfg_content, 1, cfg_file_size, cfg_f);
+    ESP_LOGI(TAG, "read_size: %d", read_size);
+    ESP_LOGD(TAG, "%s", cfg_content);
+
+    if (read_size != cfg_file_size) {
+        esp_err = ESP_ERR_INVALID_SIZE;
+        esp_err_print(esp_err, __func__, __LINE__);
+        cfg_rm = jpg_rm = true;
+        goto _end;
+    }
+
+    if (fs_parser_photo_cfg(cfg_content, take_photo_evt, timestamp, fb) !=
+        ESP_OK) {
+        esp_err = ESP_ERR_NOT_SUPPORTED;
+        esp_err_print(esp_err, __func__, __LINE__);
+        cfg_rm = jpg_rm = true;
+        goto _end;
+    }
+
+    // read .jpg into fb->buf
+    fb->buf = calloc(1, jpg_file_size);
+    if (fb->buf == NULL) {
+        esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
+        goto _end;
+    }
+
+    if ((jpg_f = fopen(jpg_file_name, "rb")) == NULL) {
+        esp_err = ESP_ERR_NOT_FOUND;
+        esp_err_print(esp_err, __func__, __LINE__);
+        cfg_rm = jpg_rm = true;
+        goto _end;
+    }
+    read_size = fread(fb->buf, 1, jpg_file_size, jpg_f);
+    ESP_LOGI(TAG, "read_size: %d", read_size);
+    if (read_size != jpg_file_size) {
+        esp_err = ESP_ERR_INVALID_SIZE;
+        esp_err_print(esp_err, __func__, __LINE__);
+        cfg_rm = jpg_rm = true;
+        goto _end;
+    }
+
+    cfg_rm = jpg_rm = true;
+
+_end:
+    if (cfg_content)
+        free(cfg_content);
+    if (cfg_f)
+        fclose(cfg_f);
+    if (jpg_f)
+        fclose(jpg_f);
+    if (cfg_rm)
+        remove(cfg_file_name);
+    if (jpg_rm)
+        remove(jpg_file_name);
+    return esp_err;
 }

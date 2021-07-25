@@ -15,6 +15,8 @@ bool fs_get_mount(void);
 void fs_get_fatfs_usage(size_t *out_total_bytes, size_t *out_free_bytes);
 esp_err_t fs_save_photo(weight_take_photo_event_t *take_photo_evt,
                         time_t timestamp, camera_fb_t *fb);
+esp_err_t fs_load_photo(weight_take_photo_event_t *take_photo_evt,
+                        time_t *timestamp, camera_fb_t *fb);
 
 #ifdef __cplusplus
 }
