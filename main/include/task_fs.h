@@ -17,6 +17,9 @@ esp_err_t fs_save_photo(weight_take_photo_event_t *take_photo_evt,
                         time_t timestamp, camera_fb_t *fb);
 esp_err_t fs_load_photo(weight_take_photo_event_t *take_photo_evt,
                         time_t *timestamp, camera_fb_t *fb);
+bool fs_check_photo_cfg_exist(void);
+void fs_remove_all_files(void);
+void fs_list(void);
 
 #ifdef __cplusplus
 }

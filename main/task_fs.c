@@ -17,7 +17,7 @@
 #include "include/task_fs.h"
 
 #define TAG "fs_task"
-#define FS_TASK_PERIOD_MS 100
+#define FS_TASK_PERIOD_MS 5000
 #define FS_ROOT_NAME "/fs"
 
 typedef struct {
@@ -30,6 +30,7 @@ typedef struct {
 
     fs_task_event_t ota_evt;
     SemaphoreHandle_t data_mutex;
+    bool fs_operating;
 } fs_task_config_t;
 
 static fs_task_config_t task_conf;
@@ -80,16 +81,15 @@ static void list_data_partitions(void) {
 }
 
 static esp_err_t fs_mount(void) {
-
     // List the available partitions
     list_data_partitions();
-
     const char *partition_label = "storage";
+    ESP_LOGW(TAG, "start mount fs");
     const esp_vfs_fat_mount_config_t mount_config = {
         .max_files = 4,
         .format_if_mount_failed = true,
         .allocation_unit_size = CONFIG_WL_SECTOR_SIZE};
-    ESP_LOGW(TAG, "start mount fs");
+
     esp_err_t esp_err = esp_vfs_fat_spiflash_mount(
         FS_ROOT_NAME, partition_label, &mount_config, &s_wl_handle);
     ESP_LOGW(TAG, "end mount fs");
@@ -264,8 +264,9 @@ void fs_get_fatfs_usage(size_t *out_total_bytes, size_t *out_free_bytes) {
 
 esp_err_t fs_save_photo(weight_take_photo_event_t *take_photo_evt,
                         time_t timestamp, camera_fb_t *fb) {
-
+    task_conf.fs_operating = true;
     if (take_photo_evt == NULL || fb == NULL) {
+        task_conf.fs_operating = false;
         return esp_err_print(ESP_ERR_INVALID_ARG, __func__, __LINE__);
     }
 
@@ -290,7 +291,8 @@ esp_err_t fs_save_photo(weight_take_photo_event_t *take_photo_evt,
 
     f = fopen(file_name, "wb");
     if (f == NULL) {
-        ESP_LOGI(TAG, "errno: %d", errno);
+        ESP_LOGE(TAG, "errno: %d", errno);
+        task_conf.fs_operating = false;
         return esp_err_print(ESP_ERR_INVALID_RESPONSE, __func__, __LINE__);
     }
     fprintf(f, "len:%d\n", fb->len);
@@ -311,6 +313,8 @@ esp_err_t fs_save_photo(weight_take_photo_event_t *take_photo_evt,
     ESP_LOGI(TAG, "opening file: %s", file_name);
     f = fopen(file_name, "wb");
     if (f == NULL) {
+        ESP_LOGE(TAG, "errno: %d", errno);
+        task_conf.fs_operating = false;
         return esp_err_print(ESP_ERR_INVALID_RESPONSE, __func__, __LINE__);
     }
     int fwrite_size = fwrite(fb->buf, 1, fb->len, f);
@@ -318,8 +322,11 @@ esp_err_t fs_save_photo(weight_take_photo_event_t *take_photo_evt,
     ESP_LOGI(TAG, "close file: %s", file_name);
     ESP_LOGI(TAG, "fwrite_size[%d], fb->len[%d]", fwrite_size, fb->len);
     if (fwrite_size != fb->len) {
+        task_conf.fs_operating = false;
         return esp_err_print(ESP_ERR_INVALID_RESPONSE, __func__, __LINE__);
     }
+
+    task_conf.fs_operating = false;
 
     return ESP_OK;
 }
@@ -333,8 +340,8 @@ esp_err_t fs_load_photo(weight_take_photo_event_t *take_photo_evt,
     esp_err_t esp_err = ESP_OK;
     DIR *dir;
     struct dirent *entry;
-    char cfg_file_name[384];
-    char jpg_file_name[256];
+    char cfg_file_name[384] = {};
+    char jpg_file_name[256] = {};
     bool find_cfg = false;
 
     if (!(dir = opendir(FS_ROOT_NAME))) {
@@ -366,7 +373,7 @@ esp_err_t fs_load_photo(weight_take_photo_event_t *take_photo_evt,
     bool cfg_rm = false;
     bool jpg_rm = false;
     char *cfg_content = NULL;
-    char prefix_name[64];
+    char prefix_name[64] = {};
     int cfg_file_size;
     int jpg_file_size;
     size_t read_size;
@@ -386,7 +393,7 @@ esp_err_t fs_load_photo(weight_take_photo_event_t *take_photo_evt,
     if ((jpg_file_size = fs_get_file_size(jpg_file_name)) == 0) {
         esp_err = ESP_ERR_NOT_FOUND;
         esp_err_print(esp_err, __func__, __LINE__);
-        cfg_rm = true;
+        cfg_rm = jpg_rm = true;
         goto _end;
     }
 
@@ -463,5 +470,100 @@ _end:
         remove(cfg_file_name);
     if (jpg_rm)
         remove(jpg_file_name);
+
     return esp_err;
 }
+
+bool fs_check_photo_cfg_exist(void) {
+    DIR *dir;
+    struct dirent *entry;
+    bool find_cfg = false;
+
+    if (task_conf.fs_operating)
+        return false;
+
+    if (!(dir = opendir(FS_ROOT_NAME))) {
+        return find_cfg;
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type == DT_DIR) {
+            if (strcmp(entry->d_name, ".") == 0 ||
+                strcmp(entry->d_name, "..") == 0)
+                continue;
+        } else {
+            if (strstr(entry->d_name, ".cfg") != NULL) {
+                find_cfg = true;
+                break;
+            }
+        }
+    }
+    closedir(dir);
+
+    return find_cfg;
+}
+
+void fs_remove_all_files(void) {
+    DIR *dir;
+    struct dirent *entry;
+    char *path = calloc(1024, 1);
+    if (path == NULL) {
+        ESP_LOGE(TAG, "%s L%d", esp_err_to_name(ESP_ERR_NO_MEM), __LINE__);
+        return;
+    }
+
+    if (!(dir = opendir(FS_ROOT_NAME))) {
+        return;
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type == DT_DIR) {
+            if (strcmp(entry->d_name, ".") == 0 ||
+                strcmp(entry->d_name, "..") == 0)
+                continue;
+            snprintf(path, 1024, "%s/%s", FS_ROOT_NAME, entry->d_name);
+            ESP_LOGI(TAG, "rm %s", path);
+            rmdir(path);
+        } else {
+            snprintf(path, 1024, "%s/%s", FS_ROOT_NAME, entry->d_name);
+            ESP_LOGI(TAG, "rm %s", path);
+            remove(path);
+        }
+    }
+    closedir(dir);
+}
+
+static void fs_listdir(const char *name, int indent) {
+    DIR *dir;
+    struct dirent *entry;
+
+    if (!(dir = opendir(name))) {
+        return;
+    }
+
+    char *path = calloc(1024, 1);
+    if (path == NULL) {
+        ESP_LOGE(TAG, "%s L%d", esp_err_to_name(ESP_ERR_NO_MEM), __LINE__);
+        return;
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type == DT_DIR) {
+            if (strcmp(entry->d_name, ".") == 0 ||
+                strcmp(entry->d_name, "..") == 0)
+                continue;
+            snprintf(path, 1024, "%s/%s", name, entry->d_name);
+            printf("%*s[%s]\n", indent, "", entry->d_name);
+            fs_listdir(path, indent + 2);
+        } else {
+            printf("%*s- %s\n", indent, "", entry->d_name);
+        }
+    }
+    closedir(dir);
+
+    if (path) {
+        free(path);
+    }
+}
+
+void fs_list(void) { fs_listdir(FS_ROOT_NAME, 0); }

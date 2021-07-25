@@ -44,12 +44,6 @@ typedef struct {
 } httpc_task_config_t;
 
 typedef struct {
-    weight_take_photo_event_t weight_take_photo_evt;
-    time_t unix_timestamp;
-    camera_fb_t *fb;
-} httpc_photo_buf_t;
-
-typedef struct {
     uint8_t idx;
     bool loop;
     httpc_photo_buf_t buf[CAM_RING_BUF_SIZE];
@@ -75,7 +69,7 @@ static int http_ota(char *ota_url, bool reboot);
 static httpc_photo_buf_t *http_photo_buf_pop_ram(uint8_t idx);
 static bool http_photo_buf_get_loop_ram(void);
 static uint8_t http_photo_buf_get_idx_ram(void);
-static bool http_photo_buf_exist(void);
+static bool http_photo_buf_exist_ram(void);
 static void http_photo_buf_init(void);
 
 static void httpc_task(void *pvParameter);
@@ -655,7 +649,7 @@ static bool http_photo_buf_get_loop_ram(void) { return photo_ring_buf.loop; }
 
 static uint8_t http_photo_buf_get_idx_ram(void) { return photo_ring_buf.idx; }
 
-static bool http_photo_buf_exist(void) {
+static bool http_photo_buf_exist_ram(void) {
     if (photo_ring_buf.loop == false && photo_ring_buf.idx == 0)
         return false;
     else
@@ -673,6 +667,8 @@ static void http_photo_buf_init(void) {
     photo_ring_buf.idx = 0;
     photo_ring_buf.loop = false;
 }
+
+static bool http_photo_buf_exist_fs(void) { return fs_check_photo_cfg_exist(); }
 
 static void httpc_task(void *pvParameter) {
     httpc_task_config_t *conf = (httpc_task_config_t *)pvParameter;
@@ -697,14 +693,13 @@ static void httpc_task(void *pvParameter) {
         event.pir_val = board_get_pir_status();
         event.weight_g = weight_get_now_weight_int();
         http_photo_buf_push_ram(&event);
-        http_send_photo_process();
+        http_send_photo_process(HTTPC_PHOTO_SRC_RAM);
         ESP_LOGI(TAG, "http post data test: %d ok", i);
         i++;
     }
 #endif
 
     task_conf.task_enable = true;
-
     bool wifi_connected = false;
 
     while (1) {
@@ -721,6 +716,7 @@ static void httpc_task(void *pvParameter) {
                 if (wifi_connected) {
                     http_photo_buf_push_ram(&task_conf.weight_take_photo_evt);
                 } else {
+                    http_photo_buf_push_fs(&task_conf.weight_take_photo_evt);
                 }
 
                 task_conf.weight_event_update = false;
@@ -744,13 +740,16 @@ static void httpc_task(void *pvParameter) {
             }
 
             if (wifi_connected) {
-                if (http_photo_buf_exist()) {
-                    http_send_photo_process();
+                if (http_photo_buf_exist_ram()) {
+                    http_send_photo_process(HTTPC_PHOTO_SRC_RAM);
+                }
+                if (http_photo_buf_exist_fs()) {
+                    http_send_photo_process(HTTPC_PHOTO_SRC_FS);
                 }
             }
 #if (!FUNC_PHOTO_RINGBUFFER)
             if (!wifi_connected) {
-                if (http_photo_buf_exist()) {
+                if (http_photo_buf_exist_ram()) {
                     http_photo_buf_init();
                 }
             }
@@ -825,8 +824,9 @@ void http_photo_buf_push_ram(weight_take_photo_event_t *take_photo_event) {
 
 void http_photo_buf_push_fs(weight_take_photo_event_t *take_photo_event) {
     time_t unix_timestamp;
-    camera_fb_t *fb;
+    camera_fb_t *fb = NULL;
     ESP_LOGI(TAG, "%s start", __func__);
+    ESP_LOGI(TAG, "sizeof(camera_fb_t): %d", sizeof(camera_fb_t));
     unix_timestamp = time(NULL);
     camera_take_photo(&fb);
     if (fb->format != PIXFORMAT_JPEG) {
@@ -835,15 +835,23 @@ void http_photo_buf_push_fs(weight_take_photo_event_t *take_photo_event) {
         esp_camera_fb_return(fb);
         return;
     }
-
     fs_save_photo(take_photo_event, unix_timestamp, fb);
-
-    esp_camera_fb_return(fb);
+    camera_return_photo(&fb);
     ESP_LOGI(TAG, "%s end", __func__);
     return;
 }
 
-void http_send_photo_process(void) {
+esp_err_t http_photo_buf_pop_fs(httpc_photo_buf_t *photo_buf) {
+    photo_buf->fb = calloc(1, sizeof(camera_fb_t));
+    if (photo_buf->fb == NULL) {
+        return esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
+    }
+
+    return fs_load_photo(&photo_buf->weight_take_photo_evt,
+                         &photo_buf->unix_timestamp, photo_buf->fb);
+}
+
+void http_send_photo_process(httpc_photo_source_e photo_src) {
     esp_http_client_config_t config = {
         .url = HTTP_IMAGE_HELPLER_URL,
         .event_handler = http_event_handler,
@@ -862,35 +870,54 @@ void http_send_photo_process(void) {
         goto _end;
     }
 
-    // check photo in the ram
     httpc_photo_buf_t *photo_buf_ram = NULL;
-    bool buf_loop = http_photo_buf_get_loop_ram();
-    uint8_t buf_start_idx = http_photo_buf_get_idx_ram();
+    if (photo_src == HTTPC_PHOTO_SRC_RAM) {
+        // check photo in the ram
+        bool buf_loop = http_photo_buf_get_loop_ram();
+        uint8_t buf_start_idx = http_photo_buf_get_idx_ram();
 
-    if (buf_loop == false && buf_start_idx == 0) {
-        ESP_LOGI(TAG, "without any photos in the buffer");
-        goto _end;
+        if (buf_loop == false && buf_start_idx == 0) {
+            ESP_LOGI(TAG, "without any photos in the buffer");
+        } else {
+            if (buf_loop) {
+                for (int i = buf_start_idx; i < CAM_RING_BUF_SIZE; ++i) {
+                    ESP_LOGI(TAG, "Send Photo ram buf[%d]", i);
+                    photo_buf_ram = http_photo_buf_pop_ram(i);
+                    http_send_photo_buf(photo_buf_ram, client, json_url_val,
+                                        JSON_URL_VAL_LEN);
+                }
+            }
+            for (int i = 0; i < buf_start_idx; ++i) {
+                ESP_LOGI(TAG, "Send Photo ram buf[%d]", i);
+                photo_buf_ram = http_photo_buf_pop_ram(i);
+                http_send_photo_buf(photo_buf_ram, client, json_url_val,
+                                    JSON_URL_VAL_LEN);
+            }
+        }
     }
 
-    if (buf_loop) {
-        for (int i = buf_start_idx; i < CAM_RING_BUF_SIZE; ++i) {
-            ESP_LOGI(TAG, "Send Photo ram buf[%d]", i);
-            photo_buf_ram = http_photo_buf_pop_ram(i);
-            http_send_photo_buf(photo_buf_ram, client, json_url_val,
+    httpc_photo_buf_t photo_buf_fs;
+    photo_buf_fs.fb = NULL;
+    if (photo_src == HTTPC_PHOTO_SRC_FS) {
+        // check photo in the fs
+        if (http_photo_buf_pop_fs(&photo_buf_fs) == ESP_OK) {
+            http_send_photo_buf(&photo_buf_fs, client, json_url_val,
                                 JSON_URL_VAL_LEN);
         }
     }
-    for (int i = 0; i < buf_start_idx; ++i) {
-        ESP_LOGI(TAG, "Send Photo ram buf[%d]", i);
-        photo_buf_ram = http_photo_buf_pop_ram(i);
-        http_send_photo_buf(photo_buf_ram, client, json_url_val,
-                            JSON_URL_VAL_LEN);
-    }
 
 _end:
-    http_photo_buf_init();
+    if (photo_src == HTTPC_PHOTO_SRC_RAM) {
+        http_photo_buf_init();
+    }
     if (json_url_val) {
         free(json_url_val);
+    }
+    if (photo_buf_fs.fb != NULL) {
+        if (photo_buf_fs.fb->buf != NULL) {
+            free(photo_buf_fs.fb->buf);
+        }
+        free(photo_buf_fs.fb);
     }
     esp_http_client_cleanup(client);
     ESP_LOGI(TAG, "http client cleanup");
