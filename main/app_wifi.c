@@ -212,19 +212,39 @@ static void sntp_obtain_time(void) {
     time_t now = 0;
     struct tm timeinfo = {0};
     int retry = 0;
-    const int retry_count = 20;
+    bool sntp_ok = false;
+    const int retry_count = 10;
 
     xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true,
                         portMAX_DELAY);
-    sntp_check();
 
-    // wait for time to be set
-    while (timeinfo.tm_year < (2020 - 1900) && ++retry < retry_count) {
-        ESP_LOGI(TAG, "waiting for system time to be set... (%d/%d)", retry,
-                 retry_count);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-        time(&now);
-        localtime_r(&now, &timeinfo);
+    for (int retry_times = 0; retry_times < 3; ++retry_times) {
+        sntp_check();
+        // wait for time to be set
+        retry = 0;
+        for (;;) {
+            ESP_LOGI(TAG, "waiting for system time to be set... (%d/%d)", retry,
+                     retry_count);
+            vTaskDelay(500 / portTICK_PERIOD_MS);
+            time(&now);
+            localtime_r(&now, &timeinfo);
+
+            if (timeinfo.tm_year >= (2020 - 1900)) {
+                sntp_ok = true;
+                break;
+            }
+            if (++retry > retry_count) {
+                break;
+            }
+        }
+        if (sntp_ok)
+            break;
+
+        sntp_stop();
+    }
+
+    if (!sntp_ok) {
+        ESP_LOGE(TAG, "sntp sync. failed L%d", __LINE__);
     }
 }
 

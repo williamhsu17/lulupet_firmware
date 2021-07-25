@@ -303,7 +303,7 @@ static esp_err_t board_cam_init(void) {
     config.xclk_freq_hz = 5000000;
     config.pixel_format = PIXFORMAT_JPEG;
     // init with high specs to pre-allocate larger buffers
-    config.frame_size = FRAMESIZE_UXGA;
+    config.frame_size = FRAMESIZE_XGA;
     config.jpeg_quality = 12;
     config.fb_count = CAM_RING_BUF_SIZE + 1;
 
@@ -321,8 +321,6 @@ static esp_err_t board_cam_init(void) {
         s->set_brightness(s, 1);  // up the blightness just a bit
         s->set_saturation(s, -2); // lower the saturation
     }
-    // drop down frame size for higher initial frame rate
-    s->set_framesize(s, CAMERA_FRAME_SIZE);
 
     return err;
 }

@@ -5,3 +5,4 @@ ota_0,    app,  ota_0,           , 1920K,
 ota_1,    app,  ota_1,           , 1920K,
 nvs,      data, nvs,             , 16K
 nvs_cali, data, nvs,             , 16K
+storage,  data, fat,     0x400000, 4M
