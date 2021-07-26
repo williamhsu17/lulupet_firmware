@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# ex.: . fw_release.sh ~/workspace/fw_release/project/up_chime_fw
+# ex.: . fw_release.sh
 
 parser_version() {
     local parser_str=$1
