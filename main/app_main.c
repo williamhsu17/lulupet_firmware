@@ -31,9 +31,9 @@
 #include "include/app_led.h"
 #include "include/app_weight.h"
 #include "include/app_wifi.h"
-#include "include/task_fs.h"
 #include "include/board_driver.h"
 #include "include/nvs_op.h"
+#include "include/task_fs.h"
 #include "include/timer_tick.h"
 #include "include/util.h"
 
@@ -69,20 +69,55 @@ void app_main() {
 
     key_check_wakeup();
 
-    board_init();
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    ESP_ERROR_CHECK(event_loop_init());
-    ESP_ERROR_CHECK(nvs_init());
-    ESP_ERROR_CHECK(nvs_cali_init());
-    timer_tick_init();
+    esp_err_t esp_err;
+    bool init_pass = true;
+
+    if ((esp_err = board_init()) != ESP_OK) {
+        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(esp_err), __LINE__);
+        init_pass = false;
+    }
+
+    if ((esp_err = esp_event_loop_create_default()) != ESP_OK) {
+        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(esp_err), __LINE__);
+        init_pass = false;
+    }
+
+    if ((esp_err = event_loop_init()) != ESP_OK) {
+        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(esp_err), __LINE__);
+        init_pass = false;
+    }
+
+    if ((esp_err = nvs_init()) != ESP_OK) {
+        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(esp_err), __LINE__);
+        init_pass = false;
+    }
+
+    if ((esp_err = nvs_cali_init()) != ESP_OK) {
+        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(esp_err), __LINE__);
+        init_pass = false;
+    }
+
+    if ((esp_err = timer_tick_init()) != ESP_OK) {
+        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(esp_err), __LINE__);
+        init_pass = false;
+    }
 
 #if (FUNC_CMD_TASK)
     app_cmd_main(service_event_loop); // Init command line interface
 #endif
 
-    fs_task_start(service_event_loop);   // Init fs task
+    fs_task_start(service_event_loop); // Init fs task
     app_key_main(service_event_loop);
     app_led_main();                      // Init led task
     app_weight_main(service_event_loop); // Init weight task
-    app_wifi_main(service_event_loop);   // Init connect/httpc task
+
+    if (init_pass) {
+        app_wifi_main(service_event_loop); // Init connect/httpc task
+    } else {
+        ESP_LOGE(TAG, "init failed L%d", __LINE__);
+        board_set_rgb_led(true, false, false);
+        while (1) {
+            vTaskDelay(100);
+        }
+    }
 }

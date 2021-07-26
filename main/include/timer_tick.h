@@ -14,6 +14,6 @@
 uint32_t timer_tick_diff(uint32_t start_tick, uint32_t end_tick);
 
 uint32_t timer_tick_ms(void);
-void timer_tick_init(void);
+esp_err_t timer_tick_init(void);
 
 #endif // __TIMER_TICK_H__

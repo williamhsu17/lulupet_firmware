@@ -712,8 +712,9 @@ esp_err_t board_led_ctrl(led_type_e led, bool enable) {
 }
 
 esp_err_t board_init(void) {
-    ESP_ERROR_CHECK(board_cam_init());
-    ESP_ERROR_CHECK(board_driver_init());
+    esp_err_t esp_err;
+    esp_err = board_cam_init();
+    esp_err |= board_driver_init();
 
-    return ESP_OK;
+    return esp_err;
 }
