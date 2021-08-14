@@ -300,6 +300,7 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
         }
         snprintf(custom_data_buf, param->custom_data.data_len + 1, "%s",
                  param->custom_data.data);
+        // {"lid":"lid_27950","token":"e17690b33f30b021168d022caf83e122b39051cd6c9617e89e1892ae3404cc38"}
         BLUFI_INFO("custom_data_buf: %s", custom_data_buf);
         cJSON *pJsonRoot = cJSON_Parse(custom_data_buf);
         if (NULL != pJsonRoot) {
