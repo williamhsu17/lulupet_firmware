@@ -306,6 +306,7 @@ static esp_err_t board_cam_init(void) {
     config.frame_size = FRAMESIZE_XGA;
     config.jpeg_quality = 12;
     config.fb_count = CAM_RING_BUF_SIZE + 1;
+    config.grab_mode = CAMERA_GRAB_LATEST;
 
     // camera init
     err = esp_camera_init(&config);
