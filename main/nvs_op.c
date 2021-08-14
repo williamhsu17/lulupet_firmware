@@ -16,6 +16,7 @@
 #define NVS_APP_LID "applid"
 #define NVS_APP_TOKEN "apptoken"
 #define NVS_WEIGHT_CONF_V1 "weight_cfg_v1"
+#define NVS_RTC_TIMEVAL "rtc_timeval"
 
 /* nvs_cali nvs_cali_weight define */
 #define NVS_CALI_PARTITION "nvs_cali"
@@ -440,11 +441,100 @@ _end:
     return esp_err;
 }
 
+esp_err_t nvs_read_rtc_timeval(struct timeval *time_val) {
+    nvs_handle_t handle;
+    esp_err_t esp_err;
+
+    if (time_val == NULL) {
+        return esp_err_print(ESP_ERR_INVALID_ARG, __func__, __LINE__);
+    }
+
+    esp_err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    uint32_t len = sizeof(struct timeval);
+    esp_err = nvs_get_blob(handle, NVS_RTC_TIMEVAL, time_val, &len);
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    ESP_LOGI(TAG, "nvs time_sec[%li] time_usec[%li]", time_val->tv_sec,
+             time_val->tv_usec);
+
+    ESP_LOGI(TAG, "%s ok", __func__);
+
+_end:
+    nvs_close(handle);
+    return esp_err;
+}
+
+esp_err_t nvs_write_rtc_timeval(struct timeval time_val) {
+    nvs_handle_t handle;
+    esp_err_t esp_err;
+
+    esp_err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
+    if (esp_err != ESP_OK) {
+        return esp_err_print(esp_err, __func__, __LINE__);
+    }
+
+    esp_err = nvs_set_blob(handle, NVS_RTC_TIMEVAL, &time_val,
+                           sizeof(struct timeval));
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    esp_err = nvs_commit(handle);
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    ESP_LOGI(TAG, "%s ok", __func__);
+
+_end:
+    nvs_close(handle);
+    return esp_err;
+}
+
+esp_err_t nvs_reset_rtc_timeval(void) {
+    nvs_handle_t handle;
+    esp_err_t esp_err;
+
+    esp_err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &handle);
+    if (esp_err != ESP_OK) {
+        return esp_err_print(esp_err, __func__, __LINE__);
+    }
+
+    esp_err = nvs_erase_key(handle, NVS_RTC_TIMEVAL);
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    esp_err = nvs_commit(handle);
+    if (esp_err != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    ESP_LOGI(TAG, "%s ok", __func__);
+
+_end:
+    nvs_close(handle);
+    return esp_err;
+}
+
 esp_err_t nvs_reset(void) {
     esp_err_t esp_err;
     esp_err = nvs_reset_lid_token();
     esp_err |= nvs_reset_weight_conf();
     esp_err |= nvs_reset_wifi_val();
+    esp_err |= nvs_reset_rtc_timeval();
 
     if (esp_err == ESP_OK) {
         ESP_LOGI(TAG, "%s ok", __func__);

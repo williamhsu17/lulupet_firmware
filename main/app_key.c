@@ -17,6 +17,7 @@
 #include "include/app_key.h"
 #include "include/board_driver.h"
 #include "include/event.h"
+#include "include/nvs_op.h"
 #include "include/timer_tick.h"
 #include "include/util.h"
 
@@ -261,21 +262,18 @@ void key_check_wakeup(void) {
     struct timeval now;
     struct tm timeinfo;
     char strftime_buf[64];
+    int sleep_time_ms;
 
     // Set timezone to CST-8
     setenv("TZ", "CST-8", 1);
     tzset();
 
-    gettimeofday(&now, NULL);
-    int sleep_time_ms = (now.tv_sec - sleep_enter_time.tv_sec) * 1000 +
-                        (now.tv_usec - sleep_enter_time.tv_usec) / 1000;
-
-    localtime_r((const time_t *)&now, &timeinfo);
-    strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-    ESP_LOGI(TAG, "The current date/time is: %s", strftime_buf);
-
+    now.tv_sec = 0;
     switch (esp_sleep_get_wakeup_cause()) {
     case ESP_SLEEP_WAKEUP_EXT1: {
+        gettimeofday(&now, NULL);
+        sleep_time_ms = (now.tv_sec - sleep_enter_time.tv_sec) * 1000 +
+                        (now.tv_usec - sleep_enter_time.tv_usec) / 1000;
         uint64_t wakeup_pin_mask = esp_sleep_get_ext1_wakeup_status();
         if (wakeup_pin_mask != 0) {
             int pin = __builtin_ffsll(wakeup_pin_mask) - 1;
@@ -286,12 +284,30 @@ void key_check_wakeup(void) {
         break;
     }
     case ESP_SLEEP_WAKEUP_TIMER: {
+        gettimeofday(&now, NULL);
+        sleep_time_ms = (now.tv_sec - sleep_enter_time.tv_sec) * 1000 +
+                        (now.tv_usec - sleep_enter_time.tv_usec) / 1000;
         ESP_LOGW(TAG, "Wake up from timer. Time spent in deep sleep: %d ms",
                  sleep_time_ms);
         break;
     }
     case ESP_SLEEP_WAKEUP_UNDEFINED:
     default:
+        // sync. time with nvs_rtc_timeval
+        if ((nvs_read_rtc_timeval(&now)) == ESP_OK) {
+            ESP_LOGW(TAG, "Sync. time with nvs timeval");
+            settimeofday(&now, NULL);
+        }
+
         ESP_LOGW(TAG, "Not a deep sleep reset");
+        break;
     }
+
+    if (now.tv_sec == 0) {
+        gettimeofday(&now, NULL);
+    }
+
+    localtime_r((const time_t *)&now, &timeinfo);
+    strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
+    ESP_LOGI(TAG, "The current date/time is: %s", strftime_buf);
 }

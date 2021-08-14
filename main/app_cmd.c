@@ -205,6 +205,12 @@ static int cmd_nvs_read(int argc, char **argv) {
         printf("weight_cfg_v1 did not exist\n");
     }
 
+    // nvs_rtc_timeval
+    struct timeval time_val;
+    if ((nvs_read_rtc_timeval(&time_val)) != ESP_OK) {
+        printf("rtc_timeval did not exist\n");
+    }
+
     return 0;
 }
 

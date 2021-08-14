@@ -60,6 +60,9 @@ static esp_err_t event_loop_init(void) {
 }
 
 void app_main() {
+    esp_err_t esp_err;
+    bool init_pass = true;
+  
     esp_reset_reason_t reset_reason = esp_reset_reason();
 
     if (reset_reason == ESP_RST_BROWNOUT) {
@@ -67,10 +70,12 @@ void app_main() {
         check_sys_det_low();
     }
 
-    key_check_wakeup();
+    if ((esp_err = nvs_init()) != ESP_OK) {
+        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(esp_err), __LINE__);
+        init_pass = false;
+    }
 
-    esp_err_t esp_err;
-    bool init_pass = true;
+    key_check_wakeup();
 
     if ((esp_err = board_init()) != ESP_OK) {
         ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(esp_err), __LINE__);
@@ -85,12 +90,7 @@ void app_main() {
     if ((esp_err = event_loop_init()) != ESP_OK) {
         ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(esp_err), __LINE__);
         init_pass = false;
-    }
-
-    if ((esp_err = nvs_init()) != ESP_OK) {
-        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(esp_err), __LINE__);
-        init_pass = false;
-    }
+    }    
 
     if ((esp_err = nvs_cali_init()) != ESP_OK) {
         ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(esp_err), __LINE__);
