@@ -15,11 +15,13 @@
 #include "include/app_wifi.h"
 #include "include/board_driver.h"
 #include "include/event.h"
+#include "include/nvs_op.h"
 #include "include/task_fs.h"
 #include "include/task_httpc.h"
 #include "include/util.h"
 
 #define TAG "httpc_task"
+#define HTTPC_SAVE_TIMEVAL_INTO_NVS_MS 1800000 // 30 min
 #define HTTPC_TASK_PERIOD_MS 100
 #define HTTP_POST_RAW_DATA_LEN 256
 #define HTTP_PAYLOAD_HEADER_LEN 200
@@ -701,6 +703,7 @@ static void httpc_task(void *pvParameter) {
 
     task_conf.task_enable = true;
     bool wifi_connected = false;
+    uint32_t save_timval_into_fs_cnt = 0;
 
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(HTTPC_TASK_PERIOD_MS));
@@ -754,6 +757,15 @@ static void httpc_task(void *pvParameter) {
                 }
             }
 #endif
+            if (save_timval_into_fs_cnt++ ==
+                (HTTPC_SAVE_TIMEVAL_INTO_NVS_MS / HTTPC_TASK_PERIOD_MS)) {
+                save_timval_into_fs_cnt = 0;
+                struct timeval now;
+                gettimeofday(&now, NULL);
+                ESP_LOGD(TAG, "tv_sec: %li tv_usec: %lu", now.tv_sec,
+                         now.tv_usec);
+                nvs_write_rtc_timeval(now);
+            }
 
             xSemaphoreGive(task_conf.data_mutex);
         }
