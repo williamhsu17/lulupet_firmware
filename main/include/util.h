@@ -39,15 +39,6 @@ extern "C" {
 
 #define CAMERA_FRAME_SIZE FRAMESIZE_XGA
 
-// CAM GPIO setting
-#define GPIO_OUTPUT_CAMPWR 12
-#define GPIO_OUTPUT_CAMPWR_PIN_SEL (1ULL << GPIO_OUTPUT_CAMPWR)
-
-// CAM GPIO setting
-#define GPIO_INPUT_PIR 2
-#define GPIO_INPUT_PIR_PIN_SEL (1ULL << GPIO_INPUT_PIR)
-#define GPIO_OUTPUT_PIRPWR 33
-#define GPIO_OUTPUT_PIRPWR_PIN_SEL (1ULL << GPIO_OUTPUT_PIRPWR)
 #define ESP_INTR_FLAG_DEFAULT 0
 #define CAM_RING_BUF_SIZE 4
 
@@ -166,6 +157,15 @@ extern "C" {
 #define PCLK_GPIO_NUM CONFIG_CAMERA_PIN_PCLK
 #endif
 
+// GPIO setting
+#define GPIO_OUTPUT_CAMPWR 12
+#define GPIO_OUTPUT_CAMPWR_PIN_SEL (1ULL << GPIO_OUTPUT_CAMPWR)
+#define GPIO_INPUT_PIR 2
+#define GPIO_INPUT_PIR_PIN_SEL (1ULL << GPIO_INPUT_PIR)
+#define GPIO_OUTPUT_PIRPWR 33
+#define GPIO_OUTPUT_PIRPWR_PIN_SEL (1ULL << GPIO_OUTPUT_PIRPWR)
+#define GPIO_OUTPUT_VSYNC_GPIO_NUM (1ULL << VSYNC_GPIO_NUM)
+
 // System power GPIO
 #define SYS_DET_PIN 15
 
@@ -225,7 +225,10 @@ extern "C" {
 #define RTC3029_CHIP_ADDR 0x51
 
 // Function
-#define FUNC_CMD_TASK 1    // 1: run console command line interface
+#define FUNC_TESTING_FW 1
+#if (FUNC_TESTING_FW)
+#define FUNC_CMD_TASK 1 // 1: run console command line interface
+#endif
 #define FUNC_WEIGHT_FAKE 0 // 1: use fake condition to test fsm
 #define FUNC_ERASE_NVS_BOOTUP                                                  \
     0 // 1: nvs will be earesd during bootup for debugging blufi process

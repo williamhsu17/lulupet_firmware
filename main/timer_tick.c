@@ -23,12 +23,15 @@ uint32_t timer_tick_diff(uint32_t start_tick, uint32_t end_tick) {
 
 uint32_t timer_tick_ms(void) { return systick; }
 
-void timer_tick_init(void) {
+esp_err_t timer_tick_init(void) {
     /* Create and start a periodic timer interrupt to call tick_inc */
     const esp_timer_create_args_t periodic_timer_args = {
         .callback = &tick_inc, .name = "periodic_tick"};
     esp_timer_handle_t periodic_timer;
-    ESP_ERROR_CHECK(esp_timer_create(&periodic_timer_args, &periodic_timer));
-    ESP_ERROR_CHECK(
-        esp_timer_start_periodic(periodic_timer, TICK_PERIOD_MS * 1000));
+    esp_err_t esp_err;
+
+    esp_err = esp_timer_create(&periodic_timer_args, &periodic_timer);
+    esp_err |= esp_timer_start_periodic(periodic_timer, TICK_PERIOD_MS * 1000);
+
+    return esp_err;
 }
