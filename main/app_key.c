@@ -4,6 +4,7 @@
 #include <sys/time.h>
 
 #include "driver/rtc_io.h"
+#include "esp_camera.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
@@ -26,7 +27,7 @@
 #define KEY_5000_MS 5000
 #define KEY_3000_MS 3000
 #define KEY_COOL_DOWN_MS 10000
-#define SYS_DET_GOTO_DEEP_SLEEP_MS 1000
+#define SYS_DET_GOTO_DEEP_SLEEP_MS 50
 
 typedef struct {
     esp_event_loop_handle_t evt_loop;
@@ -53,7 +54,23 @@ static void gpio_sys_det_task(void *arg) {
     uint32_t io_num;
     for (;;) {
         if (xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
-            printf("GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num));
+            ESP_LOGI(TAG, "GPIO[%d] intr, val: %d", io_num,
+                     gpio_get_level(io_num));
+            if (gpio_get_level(io_num) == 0) {
+                esp_camera_deinit();
+                board_deinit_gpio();
+                i2c_driver_delete(I2C_MASTER_NUM);
+                i2c_driver_delete(I2C_NUMBER(1));
+                board_deinit_gpio2();
+                ESP_LOGW(TAG, "detect SYS_DET low, goto deep sleep mode");
+                const int ext_wakeup_pin_1 = SYS_DET_PIN;
+                const uint64_t ext_wakeup_pin_1_mask = 1ULL << ext_wakeup_pin_1;
+                ESP_LOGW(TAG, "Enabling EXT1 wakeup on pins GPIO%d",
+                         ext_wakeup_pin_1);
+                esp_sleep_enable_ext1_wakeup(ext_wakeup_pin_1_mask,
+                                             ESP_EXT1_WAKEUP_ANY_HIGH);
+                esp_deep_sleep_start();
+            }
         }
     }
 }
@@ -105,7 +122,7 @@ static void key_task(void *pvParameter) {
     // create a queue to handle gpio event from isr
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
     // start gpio task
-    xTaskCreate(gpio_sys_det_task, "gpio_sys_det_task", 2048, NULL, 10, NULL);
+    xTaskCreate(gpio_sys_det_task, "gpio_sys_det_task", 4096, NULL, 10, NULL);
 
     // install gpio isr service
     // gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
@@ -127,13 +144,19 @@ static void key_task(void *pvParameter) {
         }
 
         if (!gpio_get_level(SYS_DET_PIN)) {
+            ESP_LOGD(TAG, "SYS_DET: LOW");
             ++sys_det_cnt;
             if (sys_det_cnt ==
                 (SYS_DET_GOTO_DEEP_SLEEP_MS / KEY_TASK_PERIOD_MS)) {
                 // goto deep sleep mode
-                ESP_LOGW(TAG,
+                ESP_LOGI(TAG,
                          "external power off %d msec, goto deep sleep mode",
                          SYS_DET_GOTO_DEEP_SLEEP_MS);
+                esp_camera_deinit();
+                board_deinit_gpio();
+                i2c_driver_delete(I2C_MASTER_NUM);
+                i2c_driver_delete(I2C_NUMBER(1));
+                board_deinit_gpio2();
                 const int ext_wakeup_pin_1 = SYS_DET_PIN;
                 const uint64_t ext_wakeup_pin_1_mask = 1ULL << ext_wakeup_pin_1;
                 ESP_LOGW(TAG, "Enabling EXT1 wakeup on pins GPIO%d",

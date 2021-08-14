@@ -257,6 +257,36 @@ static esp_err_t board_cam_init_gpio(void) {
     return err;
 }
 
+esp_err_t board_deinit_gpio(void) {
+    esp_err_t err;
+    gpio_config_t io_conf;
+
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    io_conf.mode = GPIO_MODE_DISABLE;
+    io_conf.pin_bit_mask = GPIO_OUTPUT_CAMPWR_PIN_SEL |
+                           GPIO_OUTPUT_PIRPWR_PIN_SEL | GPIO_INPUT_PIR_PIN_SEL |
+                           GPIO_OUTPUT_VSYNC_GPIO_NUM;
+    io_conf.pull_down_en = 0;
+    io_conf.pull_up_en = 0;
+    err = gpio_config(&io_conf);
+
+    return err;
+}
+
+esp_err_t board_deinit_gpio2(void) {
+    esp_err_t err;
+    gpio_config_t io_conf;
+
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    io_conf.mode = GPIO_MODE_DISABLE;
+    io_conf.pin_bit_mask = (1 << 4) | (1 << 13) | (1 << 14);
+    io_conf.pull_down_en = 0;
+    io_conf.pull_up_en = 0;
+    err = gpio_config(&io_conf);
+
+    return err;
+}
+
 static esp_err_t board_cam_init(void) {
     esp_err_t err;
 
@@ -713,8 +743,9 @@ esp_err_t board_led_ctrl(led_type_e led, bool enable) {
 }
 
 esp_err_t board_init(void) {
-    ESP_ERROR_CHECK(board_cam_init());
-    ESP_ERROR_CHECK(board_driver_init());
+    esp_err_t esp_err;
+    esp_err = board_cam_init();
+    esp_err |= board_driver_init();
 
-    return ESP_OK;
+    return esp_err;
 }

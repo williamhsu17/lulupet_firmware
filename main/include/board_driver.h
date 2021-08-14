@@ -83,6 +83,8 @@ bool board_get_key_status(void);
 
 esp_err_t board_led_ctrl(led_type_e led, bool enable);
 esp_err_t board_init(void);
+esp_err_t board_deinit_gpio(void);
+esp_err_t board_deinit_gpio2(void);
 
 #ifdef __cplusplus
 }
