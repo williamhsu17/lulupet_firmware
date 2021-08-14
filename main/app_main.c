@@ -67,12 +67,11 @@ void app_main() {
         check_sys_det_low();
     }
 
+    ESP_ERROR_CHECK(nvs_init());
     key_check_wakeup();
-
     board_init();
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     ESP_ERROR_CHECK(event_loop_init());
-    ESP_ERROR_CHECK(nvs_init());
     ESP_ERROR_CHECK(nvs_cali_init());
     timer_tick_init();
 
