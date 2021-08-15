@@ -199,6 +199,12 @@ static int cmd_nvs_read(int argc, char **argv) {
         printf("applid, apptoken did not exist\n");
     }
 
+    // appauto_update
+    uint8_t auto_update;
+    if (nvs_read_auto_update(&auto_update) != ESP_OK) {
+        printf("appauto_update did not exist\n");
+    }
+
     // nvs_read_weight_conf
     weight_conf_ver1_t weight_conf_v1;
     if (nvs_read_weight_conf((void *)&weight_conf_v1, 1) != ESP_OK) {

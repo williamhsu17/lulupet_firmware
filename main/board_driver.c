@@ -342,6 +342,8 @@ static esp_err_t board_cam_init(void) {
     err = esp_camera_init(&config);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Camera init failed with error 0x%x", err);
+        ESP_LOGW(TAG, "Restarting");
+        esp_restart();
         return err;
     }
 
