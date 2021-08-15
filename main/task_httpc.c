@@ -724,6 +724,7 @@ static void httpc_task(void *pvParameter) {
                 wifi_connected = true;
                 if (first_wifi_connected == false && app_wifi_check_sntp()) {
                     first_wifi_connected = true;
+                    save_timeval_into_nvs();
                     first_connect_to_wifi();
                 }
             } else {
