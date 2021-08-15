@@ -21,7 +21,8 @@
 #include "include/util.h"
 
 #define TAG "httpc_task"
-#define HTTPC_SAVE_TIMEVAL_INTO_NVS_MS 1800000 // 30 min
+#define HTTPC_SAVE_TIMEVAL_INTO_NVS_MS 1800000    // 30 min
+#define HTTPC_WAIT_FIRST_CONNTECTED_WIFI_MS 20000 // 20 sec
 #define HTTPC_TASK_PERIOD_MS 100
 #define HTTP_POST_RAW_DATA_LEN 256
 #define HTTP_PAYLOAD_HEADER_LEN 200
@@ -672,6 +673,35 @@ static void http_photo_buf_init(void) {
 
 static bool http_photo_buf_exist_fs(void) { return fs_check_photo_cfg_exist(); }
 
+static void save_timeval_into_nvs(void) {
+    struct timeval time_val;
+
+    gettimeofday(&time_val, NULL);
+    ESP_LOGI(TAG, "tv_sec: %li tv_usec: %lu", time_val.tv_sec,
+             time_val.tv_usec);
+
+    sntp_show_time(time_val.tv_sec);
+    nvs_write_rtc_timeval(time_val);
+}
+
+static void load_timeval_from_nvs(void) {
+    struct timeval now;
+    if ((nvs_read_rtc_timeval(&now)) == ESP_OK) {
+        ESP_LOGW(TAG, "Sync. time with nvs timeval");
+        settimeofday(&now, NULL);
+    }
+}
+
+static void first_connect_to_wifi(void) {
+    ESP_LOGW(TAG, "1st wifi connected, start to upload photo");
+    weight_take_photo_event_t event;
+    event.eventid = RAWDATA_EVENTID_TEST;
+    event.pir_val = board_get_pir_status();
+    event.weight_g = weight_get_now_weight_int();
+    http_photo_buf_push_ram(&event);
+    http_send_photo_process(HTTPC_PHOTO_SRC_RAM);
+}
+
 static void httpc_task(void *pvParameter) {
     httpc_task_config_t *conf = (httpc_task_config_t *)pvParameter;
 
@@ -680,30 +710,11 @@ static void httpc_task(void *pvParameter) {
                                     ESP_EVENT_ANY_ID, httpc_loop_event_handler,
                                     NULL);
 
-#if 1 // for test
-    int i = 0;
-    while (i < 1) {
-        ESP_LOGI(TAG, "checking WiFi status");
-        if (!app_wifi_check_connect(1000)) {
-            ESP_LOGE(TAG, "wifi disconnect");
-            vTaskDelay(pdMS_TO_TICKS(HTTPC_TASK_PERIOD_MS));
-            continue;
-        }
-        ESP_LOGI(TAG, "start to upload photo");
-        weight_take_photo_event_t event;
-        event.eventid = RAWDATA_EVENTID_TEST;
-        event.pir_val = board_get_pir_status();
-        event.weight_g = weight_get_now_weight_int();
-        http_photo_buf_push_ram(&event);
-        http_send_photo_process(HTTPC_PHOTO_SRC_RAM);
-        ESP_LOGI(TAG, "http post data test: %d ok", i);
-        i++;
-    }
-#endif
-
     task_conf.task_enable = true;
     bool wifi_connected = false;
+    bool first_wifi_connected = false;
     uint32_t save_timval_into_fs_cnt = 0;
+    uint32_t wait_first_wifi_connected_cnt = 0;
 
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(HTTPC_TASK_PERIOD_MS));
@@ -711,8 +722,20 @@ static void httpc_task(void *pvParameter) {
 
             if (app_wifi_check_connect(10)) {
                 wifi_connected = true;
+                if (first_wifi_connected == false && app_wifi_check_sntp()) {
+                    first_wifi_connected = true;
+                    first_connect_to_wifi();
+                }
             } else {
                 wifi_connected = false;
+                if (first_wifi_connected == false &&
+                    (wait_first_wifi_connected_cnt++ ==
+                     (HTTPC_WAIT_FIRST_CONNTECTED_WIFI_MS /
+                      HTTPC_TASK_PERIOD_MS))) {
+                    ESP_LOGW(TAG,
+                             "can not connect to wifi, sync. time from nvs");
+                    load_timeval_from_nvs();
+                }
             }
 
             if (task_conf.weight_event_update) {
@@ -760,11 +783,7 @@ static void httpc_task(void *pvParameter) {
             if (save_timval_into_fs_cnt++ ==
                 (HTTPC_SAVE_TIMEVAL_INTO_NVS_MS / HTTPC_TASK_PERIOD_MS)) {
                 save_timval_into_fs_cnt = 0;
-                struct timeval now;
-                gettimeofday(&now, NULL);
-                ESP_LOGD(TAG, "tv_sec: %li tv_usec: %lu", now.tv_sec,
-                         now.tv_usec);
-                nvs_write_rtc_timeval(now);
+                save_timeval_into_nvs();
             }
 
             xSemaphoreGive(task_conf.data_mutex);

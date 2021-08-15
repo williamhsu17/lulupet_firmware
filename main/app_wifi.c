@@ -34,6 +34,7 @@
 
 typedef struct {
     key_loop_event_t key_event;
+    bool ntp_done;
 } task_connect_cb_t;
 
 static wifi_config_t sta_config;
@@ -179,12 +180,11 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event) {
 }
 
 static void sntp_time_check(void) {
-    time_t now;
+    time_t now_time;
     struct tm timeinfo;
-    char strftime_buf[64];
 
-    time(&now);
-    localtime_r(&now, &timeinfo);
+    time(&now_time);
+    localtime_r(&now_time, &timeinfo);
     // Is time set? If not, tm_year will be (1970 - 1900).
     if (timeinfo.tm_year < (2020 - 1900)) {
         ESP_LOGI(TAG,
@@ -192,20 +192,22 @@ static void sntp_time_check(void) {
                  "over NTP.");
         sntp_obtain_time();
         // update 'now' variable with current time
-        time(&now);
+        time(&now_time);
     }
 
     // Set timezone to CST-8
     setenv("TZ", "CST-8", 1);
     tzset();
 
-    localtime_r(&now, &timeinfo);
-    strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-    ESP_LOGI(TAG, "The current date/time is: %s", strftime_buf);
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    sntp_show_time(now.tv_sec);
 
     time_t seconds;
     seconds = time(NULL);
     ESP_LOGI(TAG, "Seconds since January 1, 1970 = %ld", seconds);
+
+    task_conn_cb.ntp_done = true;
 }
 
 static void sntp_obtain_time(void) {
@@ -310,6 +312,8 @@ bool app_wifi_check_connect(uint32_t wait_ms) {
     }
 }
 
+bool app_wifi_check_sntp(void) { return task_conn_cb.ntp_done; }
+
 void app_wifi_main(esp_event_loop_handle_t event_loop) {
     ESP_LOGI(TAG, "start connect process");
 
@@ -317,7 +321,6 @@ void app_wifi_main(esp_event_loop_handle_t event_loop) {
         blufi_start(event_loop);
     } else {
         wifi_start(event_loop);
+        start_httpc_task(event_loop);
     }
-
-    start_httpc_task(event_loop);
 }

@@ -5,6 +5,7 @@
 
 #include <string.h>
 
+#include "include/board_driver.h"
 #include "include/nvs_op.h"
 
 #define TAG "nvs_op"
@@ -464,7 +465,7 @@ esp_err_t nvs_read_rtc_timeval(struct timeval *time_val) {
 
     ESP_LOGI(TAG, "nvs time_sec[%li] time_usec[%li]", time_val->tv_sec,
              time_val->tv_usec);
-
+    sntp_show_time(time_val->tv_sec);
     ESP_LOGI(TAG, "%s ok", __func__);
 
 _end:

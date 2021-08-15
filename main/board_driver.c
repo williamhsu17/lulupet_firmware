@@ -749,3 +749,12 @@ esp_err_t board_init(void) {
 
     return esp_err;
 }
+
+void sntp_show_time(time_t sec) {
+    struct tm timeinfo;
+    char strftime_buf[64];
+
+    localtime_r(&sec, &timeinfo);
+    strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
+    ESP_LOGI(TAG, "The current date/time is: %s", strftime_buf);
+}

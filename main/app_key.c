@@ -260,8 +260,6 @@ void check_sys_det_low(void) {
 
 void key_check_wakeup(void) {
     struct timeval now;
-    struct tm timeinfo;
-    char strftime_buf[64];
     int sleep_time_ms;
 
     // Set timezone to CST-8
@@ -293,21 +291,11 @@ void key_check_wakeup(void) {
     }
     case ESP_SLEEP_WAKEUP_UNDEFINED:
     default:
-        // sync. time with nvs_rtc_timeval
-        if ((nvs_read_rtc_timeval(&now)) == ESP_OK) {
-            ESP_LOGW(TAG, "Sync. time with nvs timeval");
-            settimeofday(&now, NULL);
-        }
-
         ESP_LOGW(TAG, "Not a deep sleep reset");
         break;
     }
 
-    if (now.tv_sec == 0) {
-        gettimeofday(&now, NULL);
+    if (now.tv_sec != 0) {
+        sntp_show_time(now.tv_sec);
     }
-
-    localtime_r((const time_t *)&now, &timeinfo);
-    strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-    ESP_LOGI(TAG, "The current date/time is: %s", strftime_buf);
 }

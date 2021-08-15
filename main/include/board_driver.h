@@ -86,6 +86,8 @@ esp_err_t board_init(void);
 esp_err_t board_deinit_gpio(void);
 esp_err_t board_deinit_gpio2(void);
 
+void sntp_show_time(time_t sec);
+
 #ifdef __cplusplus
 }
 #endif
