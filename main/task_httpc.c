@@ -2,15 +2,18 @@
 #include "esp_camera.h"
 #include "esp_err.h"
 #include "esp_http_client.h"
+#include "esp_https_ota.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "include/app_camera.h"
+#include "include/app_led.h"
 #include "include/app_weight.h"
 #include "include/app_wifi.h"
 #include "include/board_driver.h"
@@ -31,6 +34,8 @@
 #define JSON_URL_VAL_LEN 256
 #define HTTP_PAYLOAD_HEADER_FILENAME "lulupet-cat.jpg"
 #define UPDATE_FIRMWARE_BUF_SIZE 0x1000
+#define HTTP_POST_IMAGEHELPER_RETRY 5
+#define HTTP_POST_IMAGEHELPER_RETRY_FAILED_STR "error_image_not_send"
 
 typedef struct {
 } httpc_ota_event_t;
@@ -44,6 +49,7 @@ typedef struct {
     weight_take_photo_event_t weight_take_photo_evt;
     httpc_ota_event_t ota_evt;
     SemaphoreHandle_t data_mutex;
+    uint32_t err_line;
 } httpc_task_config_t;
 
 typedef struct {
@@ -57,9 +63,9 @@ static httpc_photo_ring_buf_t photo_ring_buf;
 
 static esp_err_t esp_err_print(esp_err_t err, const char *func, uint32_t line);
 static esp_err_t http_event_handler(esp_http_client_event_t *evt);
-static void http_post_imageHelper(esp_http_client_handle_t client,
-                                  char *json_url_val, int json_url_val_len,
-                                  camera_fb_t *fb);
+static esp_err_t http_post_imageHelper(esp_http_client_handle_t client,
+                                       char *json_url_val, int json_url_val_len,
+                                       camera_fb_t *fb);
 static void http_post_rawdata(esp_http_client_handle_t client,
                               char *json_url_val, time_t timestamp,
                               weight_take_photo_event_t *take_photo_event);
@@ -67,8 +73,9 @@ static void http_send_photo_buf(httpc_photo_buf_t *photo_buf,
                                 esp_http_client_handle_t client,
                                 char *json_url_val, int json_url_val_len);
 static int http_get_ota_update_latest(httpc_ota_event_t *event, char *ota_url,
-                                      int ota_url_len);
-static int http_ota(char *ota_url, bool reboot);
+                                      int ota_url_len, char *ver_str,
+                                      int ver_str_len);
+static int http_ota(char *ota_url);
 static httpc_photo_buf_t *http_photo_buf_pop_ram(uint8_t idx);
 static bool http_photo_buf_get_loop_ram(void);
 static uint8_t http_photo_buf_get_idx_ram(void);
@@ -79,6 +86,7 @@ static void httpc_task(void *pvParameter);
 
 static esp_err_t esp_err_print(esp_err_t err, const char *func, uint32_t line) {
     ESP_LOGE(TAG, "err:%s %s():L%d", esp_err_to_name(err), func, line);
+    task_conf.err_line = line;
     return err;
 }
 
@@ -138,9 +146,9 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
     return ESP_OK;
 }
 
-static void http_post_imageHelper(esp_http_client_handle_t client,
-                                  char *json_url_val, int json_url_val_len,
-                                  camera_fb_t *fb) {
+static esp_err_t http_post_imageHelper(esp_http_client_handle_t client,
+                                       char *json_url_val, int json_url_val_len,
+                                       camera_fb_t *fb) {
     bool client_open = false;
     int client_rd_len;
     char *payload_header = NULL;
@@ -148,11 +156,10 @@ static void http_post_imageHelper(esp_http_client_handle_t client,
     char *payload_length = NULL;
     char *json_str = NULL;
     cJSON *json_root = NULL;
-    esp_err_t err;
+    esp_err_t esp_err = ESP_OK;
 
     if (json_url_val == NULL) {
-        esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
-        return;
+        return esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
     }
 
     // HTTP HEAD
@@ -163,7 +170,8 @@ static void http_post_imageHelper(esp_http_client_handle_t client,
 
     payload_header = calloc(HTTP_PAYLOAD_HEADER_LEN, sizeof(char));
     if (payload_header == NULL) {
-        esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
+        esp_err = ESP_ERR_NO_MEM;
+        esp_err_print(esp_err, __func__, __LINE__);
         goto http_post_photo_end;
     }
     snprintf(payload_header, HTTP_PAYLOAD_HEADER_LEN,
@@ -173,6 +181,7 @@ static void http_post_imageHelper(esp_http_client_handle_t client,
 
     payload_footer = calloc(HTTP_PAYLOAD_FOOTER_LEN, sizeof(char));
     if (payload_footer == NULL) {
+        esp_err = ESP_ERR_NO_MEM;
         esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
         goto http_post_photo_end;
     }
@@ -183,6 +192,7 @@ static void http_post_imageHelper(esp_http_client_handle_t client,
         strlen(payload_header) + fb->len + strlen(payload_footer);
     payload_length = calloc(HTTP_PAYLOAD_LENGTH_LEN, sizeof(char));
     if (payload_length == NULL) {
+        esp_err = ESP_ERR_NO_MEM;
         esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
         goto http_post_photo_end;
     }
@@ -203,8 +213,8 @@ static void http_post_imageHelper(esp_http_client_handle_t client,
     esp_http_client_set_url(client, HTTP_IMAGE_HELPLER_URL);
     esp_http_client_set_method(client, HTTP_METHOD_POST);
 
-    if ((err = esp_http_client_open(client, content_length)) != ESP_OK) {
-        esp_err_print(err, __func__, __LINE__);
+    if ((esp_err = esp_http_client_open(client, content_length)) != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
         goto http_post_photo_end;
     }
     client_open = true;
@@ -212,6 +222,7 @@ static void http_post_imageHelper(esp_http_client_handle_t client,
 
     if ((client_rd_len = esp_http_client_write(client, payload_header,
                                                strlen(payload_header))) < 0) {
+        esp_err = ESP_FAIL;
         esp_err_print(ESP_FAIL, __func__, __LINE__);
         goto http_post_photo_end;
     }
@@ -219,6 +230,7 @@ static void http_post_imageHelper(esp_http_client_handle_t client,
 
     if ((client_rd_len = esp_http_client_write(client, (const char *)fb->buf,
                                                (fb->len))) < 0) {
+        esp_err = ESP_FAIL;
         esp_err_print(ESP_FAIL, __func__, __LINE__);
         goto http_post_photo_end;
     }
@@ -226,6 +238,7 @@ static void http_post_imageHelper(esp_http_client_handle_t client,
 
     if ((client_rd_len = esp_http_client_write(client, payload_footer,
                                                strlen(payload_footer))) < 0) {
+        esp_err = ESP_FAIL;
         esp_err_print(ESP_FAIL, __func__, __LINE__);
         goto http_post_photo_end;
     }
@@ -236,6 +249,7 @@ static void http_post_imageHelper(esp_http_client_handle_t client,
     // "victor-test.jpg", "size": 31285, "content_type": "image/jpeg", "url":
     // "http://lulupet.williamhsu.com.tw/media/7881a26566c74127b8e97a2632596d32.jpg"}}
     if ((content_length = esp_http_client_fetch_headers(client)) < 0) {
+        esp_err = ESP_FAIL;
         esp_err_print(ESP_FAIL, __func__, __LINE__);
         goto http_post_photo_end;
     }
@@ -244,11 +258,13 @@ static void http_post_imageHelper(esp_http_client_handle_t client,
     int read_len;
     json_str = calloc(MAX_HTTP_RECV_BUFFER + 1, sizeof(char));
     if (json_str == NULL) {
+        esp_err = ESP_FAIL;
         esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
         goto http_post_photo_end;
     }
 
     if (content_length > MAX_HTTP_RECV_BUFFER) {
+        esp_err = ESP_FAIL;
         esp_err_print(ESP_FAIL, __func__, __LINE__);
         goto http_post_photo_end;
     }
@@ -256,6 +272,7 @@ static void http_post_imageHelper(esp_http_client_handle_t client,
     // TODO: use while loop to read data with retry
     if ((read_len = esp_http_client_read(client, json_str, content_length)) <=
         0) {
+        esp_err = ESP_FAIL;
         ESP_LOGE(TAG, "Error read data");
     }
     ESP_LOGI(TAG, "read_len: %d", read_len);
@@ -264,16 +281,19 @@ static void http_post_imageHelper(esp_http_client_handle_t client,
     json_root = cJSON_Parse(json_str);
 
     if (json_root == NULL) {
+        esp_err = ESP_FAIL;
         esp_err_print(ESP_FAIL, __func__, __LINE__);
         goto http_post_photo_end;
     }
     cJSON *json_image_obj = cJSON_GetObjectItem(json_root, "image");
     if (json_image_obj == NULL) {
+        esp_err = ESP_FAIL;
         esp_err_print(ESP_FAIL, __func__, __LINE__);
         goto http_post_photo_end;
     }
     cJSON *json_url_obj = cJSON_GetObjectItem(json_image_obj, "url");
     if (json_url_obj == NULL) {
+        esp_err = ESP_FAIL;
         esp_err_print(ESP_FAIL, __func__, __LINE__);
         goto http_post_photo_end;
     }
@@ -303,7 +323,7 @@ http_post_photo_end:
         ESP_LOGI(TAG, "http client close");
     }
 
-    return;
+    return esp_err;
 }
 
 static void http_post_rawdata(esp_http_client_handle_t client,
@@ -393,14 +413,26 @@ http_post_raw_end:
 static void http_send_photo_buf(httpc_photo_buf_t *photo_buf,
                                 esp_http_client_handle_t client,
                                 char *json_url_val, int json_url_val_len) {
-    http_post_imageHelper(client, json_url_val, JSON_URL_VAL_LEN,
-                          photo_buf->fb);
+    esp_err_t esp_err;
+    for (int i = 0; i < HTTP_POST_IMAGEHELPER_RETRY; ++i) {
+        if ((esp_err =
+                 http_post_imageHelper(client, json_url_val, JSON_URL_VAL_LEN,
+                                       photo_buf->fb)) == ESP_OK)
+            break;
+    }
+
+    if (esp_err != ESP_OK) {
+        snprintf(json_url_val, json_url_val_len, "%s_%d",
+                 HTTP_POST_IMAGEHELPER_RETRY_FAILED_STR, task_conf.err_line);
+    }
+
     http_post_rawdata(client, json_url_val, photo_buf->unix_timestamp,
                       &photo_buf->weight_take_photo_evt);
 }
 
 static int http_get_ota_update_latest(httpc_ota_event_t *event, char *ota_url,
-                                      int ota_url_len) {
+                                      int ota_url_len, char *ver_str,
+                                      int ver_str_len) {
     ESP_LOGI(TAG, "Free Heap Internal is:  %d Byte",
              heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     ESP_LOGI(TAG, "Free Heap PSRAM    is:  %d Byte",
@@ -488,7 +520,11 @@ static int http_get_ota_update_latest(httpc_ota_event_t *event, char *ota_url,
         goto _end;
     }
     ESP_LOGI(TAG, "ota version: %s", cJSON_GetStringValue(version_obj));
-    // TODO: check version that should be ota
+    if (ver_str == NULL || ver_str_len == 0) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+    snprintf(ver_str, ver_str_len, "%s", cJSON_GetStringValue(version_obj));
 
     // get file_url
     cJSON *file_url_obj =
@@ -525,123 +561,25 @@ _end:
     return ret;
 }
 
-static int http_ota(char *ota_url, bool reboot) {
-
-    int ret = -1;
-    char *ota_buf = NULL;
-    bool client_open = false;
-    int content_length;
-    int buf_len;
+static int http_ota(char *ota_url) {
     esp_err_t esp_err;
     esp_http_client_config_t config = {
         .url = ota_url,
         .event_handler = http_event_handler,
     };
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    if (client == NULL) {
-        esp_err_print(ESP_FAIL, __func__, __LINE__);
-        goto _end;
-    }
-    ESP_LOGI(TAG, "http client init");
 
-    esp_http_client_set_method(client, HTTP_METHOD_GET);
+    board_cam_deinit();
+    vTaskDelay(pdMS_TO_TICKS(100));
 
-    if ((esp_err = esp_http_client_open(client, 0)) != ESP_OK) {
-        esp_err_print(esp_err, __func__, __LINE__);
-        goto _end;
-    }
-    client_open = true;
-
-    if ((content_length = esp_http_client_fetch_headers(client)) < 0) {
-        esp_err_print(ESP_FAIL, __func__, __LINE__);
-        goto _end;
-    }
-    ESP_LOGI(TAG, "http client fetech header, length: %d", content_length);
-
-    bool image_header_was_checked = false;
-    esp_ota_handle_t update_handle = 0;
-    const esp_partition_t *update_partition =
-        esp_ota_get_next_update_partition(NULL);
-
-    ota_buf = calloc(UPDATE_FIRMWARE_BUF_SIZE, sizeof(char));
-    if (ota_buf == NULL) {
-        esp_err_print(ESP_FAIL, __func__, __LINE__);
-        goto _end;
-    }
-
-    // TODO: set ota led pattern
-    buf_len = 0;
-    for (;;) {
-        int size = esp_http_client_read(client, ota_buf + buf_len,
-                                        UPDATE_FIRMWARE_BUF_SIZE - buf_len);
-        ESP_LOGD(TAG, "size: %d L%d", size, __LINE__);
-        if (size < 0) {
-            ESP_LOGE(TAG, "size: %d L%d", size, __LINE__);
-            goto _end;
-        } else if (size == 0) {
-            break;
-        }
-        buf_len += size;
-        if (!image_header_was_checked) {
-            if (buf_len < sizeof(esp_image_header_t) +
-                              sizeof(esp_image_segment_header_t) +
-                              sizeof(esp_app_desc_t)) {
-                continue;
-            }
-            image_header_was_checked = true;
-            esp_err = esp_ota_begin(update_partition, OTA_SIZE_UNKNOWN,
-                                    &update_handle);
-            if (esp_err != ESP_OK) {
-                esp_err_print(esp_err, __func__, __LINE__);
-                goto _end;
-            }
-        }
-
-        esp_err = esp_ota_write(update_handle, ota_buf, buf_len);
-        if (esp_err != ESP_OK) {
-            esp_err_print(esp_err, __func__, __LINE__);
-            goto _end;
-        }
-        vTaskDelay(pdMS_TO_TICKS(5));
-        buf_len = 0;
-    }
-    if (!image_header_was_checked) {
-        esp_err_print(esp_err, __func__, __LINE__);
-        goto _end;
-    }
-
-    esp_err = esp_ota_end(update_handle);
-    if (esp_err != ESP_OK) {
-        esp_err_print(esp_err, __func__, __LINE__);
-        goto _end;
-    }
-
-    esp_err = esp_ota_set_boot_partition(update_partition);
-    if (esp_err != ESP_OK) {
-        esp_err_print(esp_err, __func__, __LINE__);
-        goto _end;
-    }
-
-    ret = 0;
-
-_end:
-    if (ota_buf) {
-        free(ota_buf);
-    }
-    if (client_open) {
-        ESP_LOGI(TAG, "http client close");
-        esp_http_client_close(client);
-    }
-    ESP_LOGI(TAG, "http client cleanup");
-    esp_http_client_cleanup(client);
-
-    vTaskDelay(pdMS_TO_TICKS(2000)); // wait http close
-    if (ret == 0 && reboot) {
-        ESP_LOGI(TAG, "system restart L%d", __LINE__);
+    set_led_cmd(LED_GREEN_BLUE_1HZ);
+    esp_err = esp_https_ota(&config);
+    if (esp_err == ESP_OK) {
+        set_led_cmd(LED_ALL_OFF);
+        esp_restart();
+    } else {
+        ESP_LOGE(TAG, "Firmware upgrade failed");
         esp_restart();
     }
-
-    return ret;
 }
 
 static httpc_photo_buf_t *http_photo_buf_pop_ram(uint8_t idx) {
@@ -692,8 +630,68 @@ static void load_timeval_from_nvs(void) {
     }
 }
 
+static void ota_check(bool force) {
+    char ota_url[256];
+    char ver_str[8];
+    if (http_get_ota_update_latest(&task_conf.ota_evt, ota_url, sizeof(ota_url),
+                                   ver_str, sizeof(ver_str)) != 0) {
+        ESP_LOGE(TAG, "L%d", __LINE__);
+    }
+    ESP_LOGI(TAG, "ver_str: %s L%d", ver_str, __LINE__);
+    ESP_LOGI(TAG, "now ver: V%d.%d.%d L%d", VERSION_MAJOR, VERSION_MINOR,
+             VERSION_PATCH, __LINE__);
+    ESP_LOGI(TAG, "ota_url: %s L%d", ota_url, __LINE__);
+
+    int ver_major = VERSION_MAJOR;
+    int ver_minor = VERSION_MINOR;
+    int ver_patch = VERSION_PATCH;
+
+    if (sscanf(ver_str, "V%d.%d.%d", &ver_major, &ver_minor, &ver_patch) != 3) {
+        ESP_LOGE(TAG, "L%d", __LINE__);
+    }
+
+    int get_num =
+        sscanf(ver_str, "V%d.%d.%d", &ver_major, &ver_minor, &ver_patch);
+    ESP_LOGI(TAG, "get_num: %d", get_num);
+    ESP_LOGI(TAG, "ver_major: %d", ver_major);
+    ESP_LOGI(TAG, "ver_minor: %d", ver_minor);
+    ESP_LOGI(TAG, "ver_patch: %d", ver_patch);
+
+    // check server version is larger that
+    bool update = false;
+    if (ver_major > VERSION_MAJOR) {
+        update = true;
+    } else if (ver_major == VERSION_MAJOR) {
+        if (ver_minor > VERSION_MINOR) {
+            update = true;
+        } else if (ver_minor == VERSION_PATCH) {
+            if (ver_patch > VERSION_PATCH) {
+                update = true;
+            }
+        }
+    }
+
+    ESP_LOGW(TAG, "ota update: %d", update);
+
+    if (update || force) {
+        if (http_ota(ota_url) != 0) {
+            ESP_LOGE(TAG, "L%d", __LINE__);
+        }
+    }
+}
+
 static void first_connect_to_wifi(void) {
-    ESP_LOGW(TAG, "1st wifi connected, start to upload photo");
+    ESP_LOGW(TAG, "1st wifi connected");
+
+    uint8_t auto_update = 1;
+    nvs_read_auto_update(&auto_update);
+    ESP_LOGW(TAG, "auto_update: %d", auto_update);
+    if (auto_update) {
+        ota_check(false);
+        // TODO: read weigh config file
+    }
+
+    ESP_LOGW(TAG, "upload photo");
     weight_take_photo_event_t event;
     event.eventid = RAWDATA_EVENTID_TEST;
     event.pir_val = board_get_pir_status();
@@ -751,15 +749,7 @@ static void httpc_task(void *pvParameter) {
 
             if (task_conf.ota_event_update) {
                 if (wifi_connected) {
-                    char ota_url[256];
-                    if (http_get_ota_update_latest(&task_conf.ota_evt, ota_url,
-                                                   sizeof(ota_url)) != 0) {
-                        ESP_LOGE(TAG, "L%d", __LINE__);
-                    }
-                    ESP_LOGI(TAG, "ota_url: %s L%d", ota_url, __LINE__);
-                    if (http_ota(ota_url, 1) != 0) {
-                        ESP_LOGE(TAG, "L%d", __LINE__);
-                    }
+                    ota_check(true);
                 } else {
                     ESP_LOGE(TAG, "wifi disconnect");
                 }
