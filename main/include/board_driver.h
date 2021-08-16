@@ -19,6 +19,7 @@ typedef enum {
     LED_TYPE_MAX,
 } led_type_e;
 
+esp_err_t board_cam_deinit(void);
 esp_err_t i2c_mcp3221_readADC(i2c_port_t i2c_num, unsigned int *buffer);
 esp_err_t i2c_RV3029_readTIME(i2c_port_t i2c_num, unsigned int *buffer);
 esp_err_t i2c_RV3029_writeTIME(i2c_port_t i2c_num, int time_hour, int time_min,

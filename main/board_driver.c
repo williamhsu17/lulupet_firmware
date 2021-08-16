@@ -336,7 +336,10 @@ static esp_err_t board_cam_init(void) {
     config.frame_size = FRAMESIZE_XGA;
     config.jpeg_quality = 12;
     config.fb_count = CAM_RING_BUF_SIZE + 1;
-    config.grab_mode = CAMERA_GRAB_LATEST;
+    config.grab_mode =
+        CAMERA_GRAB_LATEST; // Note: that will cause ota failed: Guru Meditation
+                            // Error: Core  0 panic'ed (Cache disabled but
+                            // cached memory region accessed)
 
     // camera init
     err = esp_camera_init(&config);
@@ -357,6 +360,8 @@ static esp_err_t board_cam_init(void) {
 
     return err;
 }
+
+esp_err_t board_cam_deinit(void) { return esp_camera_deinit(); }
 
 esp_err_t i2c_RV3029_readTIME(i2c_port_t i2c_num, unsigned int *buffer) {
     esp_err_t ret;
