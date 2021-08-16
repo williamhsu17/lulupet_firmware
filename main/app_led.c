@@ -22,8 +22,8 @@
 QueueHandle_t led_cmd_que = NULL;
 
 static char *led_cmd_type[] = {
-    "off",     "w_solid", "r_solid", "g_solid",
-    "b_solid", "r_1Hz",   "g_1Hz",   "b_1Hz",
+    "off",   "w_solid", "r_solid", "g_solid", "b_solid",
+    "r_1Hz", "g_1Hz",   "b_1Hz",   "g_b_1Hz",
 };
 
 static void led_task(void *pvParameter) {
@@ -112,6 +112,14 @@ static void led_task(void *pvParameter) {
             }
             repeat_count++;
             break;
+        case LED_GREEN_BLUE_1HZ:
+            if (repeat_count % 10 == 0) {
+                repeat_count = 0;
+                board_set_rgb_led(false, true, false);
+            } else if (repeat_count % 5 == 0) {
+                board_set_rgb_led(false, false, true);
+            }
+            repeat_count++;
         default:
             break;
         }
@@ -124,4 +132,8 @@ void app_led_main(void) {
     ESP_LOGI(TAG, "app_led_main start");
 
     xTaskCreate(&led_task, "led_task", 4096, NULL, 4, NULL);
+}
+
+void set_led_cmd(unsigned int led_cmd_load) {
+    xQueueSend(led_cmd_que, (void *)&led_cmd_load, (TickType_t)0);
 }

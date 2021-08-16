@@ -20,8 +20,10 @@ extern QueueHandle_t led_cmd_que;
 #define LED_RED_1HZ 5
 #define LED_GREEN_1HZ 6
 #define LED_BLUE_1HZ 7
+#define LED_GREEN_BLUE_1HZ 8
 
 void app_led_main(void);
+void set_led_cmd(unsigned int led_cmd_load);
 
 #ifdef __cplusplus
 }

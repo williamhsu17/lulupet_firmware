@@ -86,6 +86,7 @@ static int gl_sta_ssid_len;
 /* lulupet API id and token */
 static char lulupet_lid_get[NVS_LULUPET_LID_LEN];
 static char lulupet_token_get[NVS_LULUPET_TOKEN_LEN];
+static uint8_t lulupet_auto_update;
 static wifi_config_t sta_config;
 static wifi_config_t ap_config;
 static uint8_t server_if;
@@ -301,6 +302,7 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
         snprintf(custom_data_buf, param->custom_data.data_len + 1, "%s",
                  param->custom_data.data);
         // {"lid":"lid_27950","token":"e17690b33f30b021168d022caf83e122b39051cd6c9617e89e1892ae3404cc38"}
+        // {"lid":"lid_27950","token":"e17690b33f30b021168d022caf83e122b39051cd6c9617e89e1892ae3404cc38","auto_update":1}
         BLUFI_INFO("custom_data_buf: %s", custom_data_buf);
         cJSON *pJsonRoot = cJSON_Parse(custom_data_buf);
         if (NULL != pJsonRoot) {
@@ -323,11 +325,23 @@ static void blufi_event_callback(esp_blufi_cb_event_t event,
                     BLUFI_ERROR("token is not string");
             } else
                 BLUFI_ERROR("get object token fail");
+            lulupet_auto_update = 1;
+            cJSON *pauto_update = cJSON_GetObjectItem(pJsonRoot, "auto_update");
+            if (NULL != pauto_update) {
+                if (cJSON_IsNumber(pauto_update)) {
+                    lulupet_auto_update = (int)pauto_update->valueint;
+                    BLUFI_INFO("read auto_update:%d", lulupet_auto_update);
+                } else
+                    BLUFI_ERROR("auto_update is not Number");
+            }
         } else {
             BLUFI_ERROR("json parse fail");
         }
         if (custom_data_buf) {
             free(custom_data_buf);
+        }
+        if (pJsonRoot) {
+            cJSON_Delete(pJsonRoot);
         }
         break;
     }
@@ -672,6 +686,7 @@ void blufi_start(esp_event_loop_handle_t event_loop) {
     nvs_write_lid_token(&lulupet_lid_get[0], sizeof(lulupet_lid_get),
                         &lulupet_token_get[0],
                         sizeof(lulupet_token_get)); // TODO: error handling
+    nvs_write_auto_update(lulupet_auto_update);
     BLUFI_INFO("store WiFi setting to NVS");
     nvs_write_wifi_val(1, &sta_config); // TODO: error handling
     blufi_set_led_cmd(LED_ALL_OFF);
