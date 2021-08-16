@@ -60,7 +60,6 @@ static void wifi_event_init(void);
 static void wifi_init_from_nvs(void);
 static void wifi_check_connect(uint32_t wait_ms, uint8_t retry);
 static esp_err_t wifi_event_handler(void *ctx, system_event_t *event);
-static void set_led_cmd(unsigned int led_cmd_load);
 static void sntp_obtain_time(void);
 static void sntp_check(void);
 static void sntp_time_check(void);
@@ -71,10 +70,6 @@ static esp_err_t esp_err_print(esp_err_t err, const char *func, uint32_t line) {
     return err;
 }
 #endif
-
-static void set_led_cmd(unsigned int led_cmd_load) {
-    xQueueSend(led_cmd_que, (void *)&led_cmd_load, (TickType_t)0);
-}
 
 static void wifi_init_from_nvs(void) {
     tcpip_adapter_init();
