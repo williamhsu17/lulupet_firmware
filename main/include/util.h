@@ -228,7 +228,7 @@ extern "C" {
 #define FUNC_TESTING_FW 1
 #if (FUNC_TESTING_FW)
 #define FUNC_CMD_TASK 1    // 1: run console command line interface
-#define FUNC_WEIGHT_TASK 0 // 0/1: disable/enable weight task
+#define FUNC_WEIGHT_TASK 1 // 0/1: disable/enable weight task
 #else
 #define FUNC_CMD_TASK 0    // 1: run console command line interface
 #define FUNC_WEIGHT_TASK 1 // 0/1: disable/enable weight task
@@ -247,6 +247,8 @@ extern "C" {
 
 #define HTTP_OTA_UPDATE_LATEST_URL                                             \
     "http://lulupet.williamhsu.com.tw/ota_update/latest"
+#define HTTP_OTA_UPDATE_CONFIG_LATEST_URL                                      \
+    "http://lulupet.williamhsu.com.tw/ota_update/config/latest/"
 
 #define HTTPS_PHOTO_URL "https://lulupet.williamhsu.com.tw/imageHelper/"
 #define HTTPS_ENABLE_URL "https://lulupet.williamhsu.com.tw/litter/enable/"

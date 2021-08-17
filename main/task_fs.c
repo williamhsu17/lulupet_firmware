@@ -133,7 +133,7 @@ static bool fs_cfg_file_check_param(bool *exist, char *line, char *param,
     if (!(*exist) && strstr(line, param) != NULL) {
         prefix_len = strlen(param);
         memcpy(result, line + prefix_len, strlen(line) - prefix_len);
-        ESP_LOGI(TAG, "param[%s] result[%s]", param, result);
+        ESP_LOGD(TAG, "param[%s] result[%s]", param, result);
         (*exist) = true;
         return true;
     } else {
@@ -567,3 +567,113 @@ static void fs_listdir(const char *name, int indent) {
 }
 
 void fs_list(void) { fs_listdir(FS_ROOT_NAME, 0); }
+
+esp_err_t fs_parser_weight_cfg_v1(char *content,
+                                  weight_conf_ver1_t *weight_confg_v1) {
+    /*
+     * version:1
+     * standby_period_ms:10
+     * standby_active_weight_g:200.000
+     * jump_period_ms:1000
+     * jump_pause_times:5
+     * jump_chk:25
+     * jump_to_standby_chk:4
+     * jump_to_bigjump_chk:4
+     * jump_cat_weight_g:2000.000
+     * bigjump_period_ms:1000
+     * postevent_period_ms:1000
+     * postevnet_chk:1
+     */
+    char *start_p;
+    char *end_p;
+    char tmp_str[64];
+    char line_str[256];
+
+    bool version_exist = false;
+    bool standby_period_ms_exist = false;
+    bool standby_active_weight_g_exist = false;
+    bool jump_period_ms_exist = false;
+    bool jump_pause_times_exist = false;
+    bool jump_chk_exist = false;
+    bool jump_to_standby_chk_exist = false;
+    bool jump_to_bigjump_chk_exist = false;
+    bool jump_cat_weight_g_exist = false;
+    bool bigjump_period_ms_exist = false;
+    bool postevent_period_ms_exist = false;
+    bool postevnet_chk_exist = false;
+
+    ESP_LOGD(TAG, "strlen(content): %d", strlen(content));
+
+    start_p = content;
+    for (int i = 0; i < strlen(content); ++i) {
+        if (content[i] == '\n') {
+            end_p = content + i;
+            memset(line_str, 0x00, sizeof(line_str));
+            memcpy(line_str, start_p, end_p - start_p);
+            ESP_LOGI(TAG, "line_str: %s", line_str);
+
+            memset(tmp_str, 0x00, sizeof(tmp_str));
+            if (fs_cfg_file_check_param(&version_exist, line_str,
+                                        "version:", tmp_str)) {
+                weight_confg_v1->version = atoi(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&standby_period_ms_exist, line_str,
+                                        "standby_period_ms:", tmp_str)) {
+                weight_confg_v1->standby_period_ms = atoi(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&standby_active_weight_g_exist,
+                                        line_str,
+                                        "standby_active_weight_g:", tmp_str)) {
+                weight_confg_v1->standby_active_weight_g = atof(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&jump_period_ms_exist, line_str,
+                                        "jump_period_ms:", tmp_str)) {
+                weight_confg_v1->jump_period_ms = atoi(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&jump_pause_times_exist, line_str,
+                                        "jump_pause_times:", tmp_str)) {
+                weight_confg_v1->jump_pause_times = atoi(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&jump_chk_exist, line_str,
+                                        "jump_chk:", tmp_str)) {
+                weight_confg_v1->jump_chk = atoi(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&jump_to_standby_chk_exist, line_str,
+                                        "jump_to_standby_chk:", tmp_str)) {
+                weight_confg_v1->jump_to_standby_chk = atoi(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&jump_to_bigjump_chk_exist, line_str,
+                                        "jump_to_bigjump_chk:", tmp_str)) {
+                weight_confg_v1->jump_to_bigjump_chk = atoi(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&jump_cat_weight_g_exist, line_str,
+                                        "jump_cat_weight_g:", tmp_str)) {
+                weight_confg_v1->jump_cat_weight_g = atof(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&bigjump_period_ms_exist, line_str,
+                                        "bigjump_period_ms:", tmp_str)) {
+                weight_confg_v1->bigjump_period_ms = atoi(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&postevent_period_ms_exist, line_str,
+                                        "postevent_period_ms:", tmp_str)) {
+                weight_confg_v1->postevent_period_ms = atoi(tmp_str);
+            }
+            if (fs_cfg_file_check_param(&postevnet_chk_exist, line_str,
+                                        "postevnet_chk:", tmp_str)) {
+                weight_confg_v1->postevnet_chk = atoi(tmp_str);
+            }
+
+            if (version_exist & standby_period_ms_exist &
+                standby_active_weight_g_exist & jump_period_ms_exist &
+                jump_pause_times_exist & jump_chk_exist &
+                jump_to_standby_chk_exist & jump_to_bigjump_chk_exist &
+                jump_cat_weight_g_exist & bigjump_period_ms_exist &
+                postevent_period_ms_exist & postevnet_chk_exist)
+                return ESP_OK;
+
+            start_p = content + i + 1;
+        }
+    }
+
+    return ESP_FAIL;
+}

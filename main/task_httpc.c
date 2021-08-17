@@ -72,10 +72,14 @@ static void http_post_rawdata(esp_http_client_handle_t client,
 static void http_send_photo_buf(httpc_photo_buf_t *photo_buf,
                                 esp_http_client_handle_t client,
                                 char *json_url_val, int json_url_val_len);
+static int http_get_ota_update_config_latest(httpc_ota_event_t *event,
+                                             char *cfg_url, int cfg_url_len,
+                                             char *ver_str, int ver_str_len);
 static int http_get_ota_update_latest(httpc_ota_event_t *event, char *ota_url,
                                       int ota_url_len, char *ver_str,
                                       int ver_str_len);
 static int http_ota(char *ota_url);
+static esp_err_t http_get_cfg(char *cfg_url);
 static httpc_photo_buf_t *http_photo_buf_pop_ram(uint8_t idx);
 static bool http_photo_buf_get_loop_ram(void);
 static uint8_t http_photo_buf_get_idx_ram(void);
@@ -430,6 +434,138 @@ static void http_send_photo_buf(httpc_photo_buf_t *photo_buf,
                       &photo_buf->weight_take_photo_evt);
 }
 
+static int http_get_ota_update_config_latest(httpc_ota_event_t *event,
+                                             char *cfg_url, int cfg_url_len,
+                                             char *ver_str, int ver_str_len) {
+    ESP_LOGI(TAG, "Free Heap Internal is:  %d Byte",
+             heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    ESP_LOGI(TAG, "Free Heap PSRAM    is:  %d Byte",
+             heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+
+    int ret = -1;
+    char *json_str = NULL;
+    bool client_open = false;
+    int content_length;
+    int read_len;
+    esp_err_t esp_err;
+    cJSON *rsp_root_obj = NULL;
+
+    esp_http_client_config_t config = {
+        .url = HTTP_OTA_UPDATE_CONFIG_LATEST_URL,
+        .event_handler = http_event_handler,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+    ESP_LOGI(TAG, "http client init");
+
+    esp_http_client_set_method(client, HTTP_METHOD_GET);
+    esp_http_client_set_header(client, "accept", "application/json");
+    esp_http_client_set_header(client, "token", "");
+    esp_http_client_set_header(client, "lid", app_wifi_get_lid());
+    esp_http_client_set_header(client, "litter-token", app_wifi_get_token());
+    esp_http_client_set_header(
+        client, "X-CSRFToken",
+        "eA8ob2RLGxH6sQ7njh6pokrwNNTxR7gDqpfhPY9VyO8M9B8HZIaMFrKClihBLO39");
+
+    if ((esp_err = esp_http_client_open(client, 0)) != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+    client_open = true;
+
+    if ((content_length = esp_http_client_fetch_headers(client)) < 0) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+    ESP_LOGI(TAG, "http client fetech header, length: %d", content_length);
+
+    if (content_length > MAX_HTTP_RECV_BUFFER) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+
+    json_str = calloc(MAX_HTTP_RECV_BUFFER + 1, sizeof(char));
+    if (json_str == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+
+    if ((read_len = esp_http_client_read(client, json_str, content_length)) <=
+        0) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+    ESP_LOGI(TAG, "http client read json: %s", json_str);
+    ESP_LOGI(TAG, "read_len: %d", read_len);
+
+    // {"msg": "Request Successful, download latest config file version: v1.1",
+    // "result": "Success", "data": {"id": 2, "version": "v1.1", "enable": true,
+    // "latest": true, "file_url":
+    // "http://lulupet.williamhsu.com.tw/media/config_file/weight.cfg",
+    // "display_tag": ""}}
+    rsp_root_obj = cJSON_Parse(json_str);
+    if (rsp_root_obj == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+
+    cJSON *data_obj = cJSON_GetObjectItemCaseSensitive(rsp_root_obj, "data");
+    if (data_obj == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+
+    // get version
+    cJSON *version_obj = cJSON_GetObjectItemCaseSensitive(data_obj, "version");
+    if (version_obj == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+    ESP_LOGI(TAG, "ota version: %s", cJSON_GetStringValue(version_obj));
+    if (ver_str == NULL || ver_str_len == 0) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+    snprintf(ver_str, ver_str_len, "%s", cJSON_GetStringValue(version_obj));
+
+    // get file_url
+    cJSON *file_url_obj =
+        cJSON_GetObjectItemCaseSensitive(data_obj, "file_url");
+    if (file_url_obj == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+    ESP_LOGI(TAG, "cfg file_url_obj: %s", cJSON_GetStringValue(file_url_obj));
+
+    if (cfg_url == NULL || cfg_url_len == 0) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+
+    snprintf(cfg_url, cfg_url_len, "%s", cJSON_GetStringValue(file_url_obj));
+
+    ret = 0;
+
+_end:
+    if (rsp_root_obj) {
+        free(rsp_root_obj);
+    }
+    if (json_str) {
+        free(json_str);
+    }
+    if (client_open) {
+        ESP_LOGI(TAG, "http client close");
+        esp_http_client_close(client);
+    }
+    ESP_LOGI(TAG, "http client cleanup");
+    esp_http_client_cleanup(client);
+
+    return ret;
+}
+
 static int http_get_ota_update_latest(httpc_ota_event_t *event, char *ota_url,
                                       int ota_url_len, char *ver_str,
                                       int ver_str_len) {
@@ -561,6 +697,76 @@ _end:
     return ret;
 }
 
+static esp_err_t http_get_cfg(char *cfg_url) {
+    char *cfg_buf = NULL;
+    bool client_open = false;
+    int content_length;
+    esp_err_t esp_err;
+    esp_http_client_config_t config = {
+        .url = cfg_url,
+        .event_handler = http_event_handler,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == NULL) {
+        esp_err = ESP_FAIL;
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+    ESP_LOGI(TAG, "http client init");
+
+    esp_http_client_set_method(client, HTTP_METHOD_GET);
+
+    if ((esp_err = esp_http_client_open(client, 0)) != ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+    client_open = true;
+
+    if ((content_length = esp_http_client_fetch_headers(client)) < 0) {
+        esp_err = ESP_FAIL;
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+    ESP_LOGI(TAG, "http client fetech header, length: %d", content_length);
+
+    cfg_buf = calloc(UPDATE_FIRMWARE_BUF_SIZE, sizeof(char));
+    if (cfg_buf == NULL) {
+        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        goto _end;
+    }
+
+    int size = esp_http_client_read(client, cfg_buf, content_length);
+    ESP_LOGI(TAG, "size: %d", size);
+    if (size != content_length) {
+        esp_err = ESP_FAIL;
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    ESP_LOGI(TAG, "config:\n%s", cfg_buf);
+
+    weight_conf_ver1_t weight_confg_v1;
+    if ((esp_err = fs_parser_weight_cfg_v1(cfg_buf, &weight_confg_v1)) !=
+        ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
+        goto _end;
+    }
+
+    weight_update_weight_conf_v1(&weight_confg_v1);
+
+_end:
+    if (cfg_buf) {
+        free(cfg_buf);
+    }
+    if (client_open) {
+        ESP_LOGI(TAG, "http client close");
+        esp_http_client_close(client);
+    }
+    ESP_LOGI(TAG, "http client cleanup");
+    esp_http_client_cleanup(client);
+    return esp_err;
+}
+
 static int http_ota(char *ota_url) {
     esp_err_t esp_err;
     esp_http_client_config_t config = {
@@ -631,16 +837,29 @@ static void load_timeval_from_nvs(void) {
 }
 
 static void ota_check(bool force) {
-    char ota_url[256];
+    char url[256];
     char ver_str[8];
-    if (http_get_ota_update_latest(&task_conf.ota_evt, ota_url, sizeof(ota_url),
+
+    if (http_get_ota_update_config_latest(&task_conf.ota_evt, url, sizeof(url),
+                                          ver_str, sizeof(ver_str)) != 0) {
+        ESP_LOGE(TAG, "L%d", __LINE__);
+    } else {
+        ESP_LOGI(TAG, "cfg ver_str: %s L%d", ver_str, __LINE__);
+        ESP_LOGI(TAG, "cfg url: %s L%d", url, __LINE__);
+        if (http_get_cfg(url) != ESP_OK) {
+            ESP_LOGE(TAG, "L%d", __LINE__);
+        }
+    }
+
+    if (http_get_ota_update_latest(&task_conf.ota_evt, url, sizeof(url),
                                    ver_str, sizeof(ver_str)) != 0) {
         ESP_LOGE(TAG, "L%d", __LINE__);
+        return;
     }
-    ESP_LOGI(TAG, "ver_str: %s L%d", ver_str, __LINE__);
-    ESP_LOGI(TAG, "now ver: V%d.%d.%d L%d", VERSION_MAJOR, VERSION_MINOR,
+    ESP_LOGI(TAG, "ota ver_str: %s L%d", ver_str, __LINE__);
+    ESP_LOGI(TAG, "ota now ver: V%d.%d.%d L%d", VERSION_MAJOR, VERSION_MINOR,
              VERSION_PATCH, __LINE__);
-    ESP_LOGI(TAG, "ota_url: %s L%d", ota_url, __LINE__);
+    ESP_LOGI(TAG, "ota url: %s L%d", url, __LINE__);
 
     int ver_major = VERSION_MAJOR;
     int ver_minor = VERSION_MINOR;
@@ -674,7 +893,7 @@ static void ota_check(bool force) {
     ESP_LOGW(TAG, "ota update: %d", update);
 
     if (update || force) {
-        if (http_ota(ota_url) != 0) {
+        if (http_ota(url) != 0) {
             ESP_LOGE(TAG, "L%d", __LINE__);
         }
     }
@@ -688,7 +907,6 @@ static void first_connect_to_wifi(void) {
     ESP_LOGW(TAG, "auto_update: %d", auto_update);
     if (auto_update) {
         ota_check(false);
-        // TODO: read weigh config file
     }
 
     ESP_LOGW(TAG, "upload photo");

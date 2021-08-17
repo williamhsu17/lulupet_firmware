@@ -345,17 +345,17 @@ cmd_weight_condition_set_err:
 static int cmd_weight_get_param(int argc, char **argv) {
     PARSE_ARG(cmd_weight_get_param_args);
 
-    printf("active_weight: %.2f\n", w_task_cb.conf->standby_active_weight_g);
-    printf("cat_weight: %.2f\n", w_task_cb.conf->jump_cat_weight_g);
-    printf("jump_to_standby_chk: %d\n", w_task_cb.conf->jump_to_standby_chk);
-    printf("jump_to_bigjump_chk: %d\n", w_task_cb.conf->jump_to_bigjump_chk);
-    printf("jump_chk: %d\n", w_task_cb.conf->jump_chk);
-    printf("postevnet_chk: %d\n", w_task_cb.conf->postevnet_chk);
-    printf("jump_pause_times: %d\n", w_task_cb.conf->jump_pause_times);
-    printf("standby_period_ms: %d\n", w_task_cb.conf->standby_period_ms);
-    printf("jump_period_ms: %d\n", w_task_cb.conf->jump_period_ms);
-    printf("bigjump_period_ms: %d\n", w_task_cb.conf->bigjump_period_ms);
-    printf("postevent_period_ms: %d\n", w_task_cb.conf->postevent_period_ms);
+    printf("active_weight: %.2f\n", w_task_cb.conf.standby_active_weight_g);
+    printf("cat_weight: %.2f\n", w_task_cb.conf.jump_cat_weight_g);
+    printf("jump_to_standby_chk: %d\n", w_task_cb.conf.jump_to_standby_chk);
+    printf("jump_to_bigjump_chk: %d\n", w_task_cb.conf.jump_to_bigjump_chk);
+    printf("jump_chk: %d\n", w_task_cb.conf.jump_chk);
+    printf("postevnet_chk: %d\n", w_task_cb.conf.postevnet_chk);
+    printf("jump_pause_times: %d\n", w_task_cb.conf.jump_pause_times);
+    printf("standby_period_ms: %d\n", w_task_cb.conf.standby_period_ms);
+    printf("jump_period_ms: %d\n", w_task_cb.conf.jump_period_ms);
+    printf("bigjump_period_ms: %d\n", w_task_cb.conf.bigjump_period_ms);
+    printf("postevent_period_ms: %d\n", w_task_cb.conf.postevent_period_ms);
     printf("pir_level: %d\n", gpio_get_level(GPIO_INPUT_PIR));
 
     return 0;

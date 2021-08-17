@@ -98,11 +98,13 @@ static void weight_conf_init_v1(weight_conf_ver1_t *conf);
 static esp_err_t weight_conf_init(weight_task_cb *task);
 static void weight_task(void *pvParameter);
 
+#if 0 // unused
 static esp_err_t esp_err_print(esp_err_t esp_err, const char *file,
                                uint32_t line) {
     ESP_LOGE(TAG, "err: %s %s():L%d", esp_err_to_name(esp_err), file, line);
     return esp_err;
 }
+#endif
 
 static void weight_post_event(esp_event_loop_handle_t event_loop, float weight,
                               rawdata_eventid eventid) {
@@ -201,7 +203,7 @@ static void weight_fsm_check_standby(void) {
     if (task_data.ring_buffer_loop) {
 #endif
         if ((w_task_cb.now_weight_g - w_task_cb.ref_weight_g) >
-            w_task_cb.conf->standby_active_weight_g) {
+            w_task_cb.conf.standby_active_weight_g) {
             weight_fsm_goto_jump();
         }
 #if (!FUNC_WEIGHT_FAKE)
@@ -214,7 +216,7 @@ static void weight_fsm_goto_standby(void) {
     board_led_ctrl(LED_TYPE_BD_W, false); // turn off W led
     board_led_ctrl(LED_TYPE_IR, false);   // turn off IR led
     task_data.weight_pause_times = 0;
-    task_data.period_ms = w_task_cb.conf->standby_period_ms;
+    task_data.period_ms = w_task_cb.conf.standby_period_ms;
     task_data.ref_adc_exec = true;
     task_data.ref_adc_sum = 0;
     task_data.ring_buffer_loop = false;
@@ -233,7 +235,7 @@ static void weight_fsm_check_jump(void) {
         ++task_data.jump_cnt;
 
         if ((w_task_cb.now_weight_g - w_task_cb.ref_weight_g) <
-                (0.5 * w_task_cb.conf->jump_cat_weight_g) &&
+                (0.5 * w_task_cb.conf.jump_cat_weight_g) &&
             !w_task_cb.pir_level) {
             task_data.jump_to_bigjump_cnt = 0;
             ++task_data.jump_to_standby_cnt;
@@ -242,7 +244,7 @@ static void weight_fsm_check_jump(void) {
             if (task_data.jump_to_standby_cnt == task_data.jump_to_standby_num)
                 weight_fsm_goto_standby();
         } else if ((w_task_cb.now_weight_g - w_task_cb.ref_weight_g) >=
-                       (0.5 * w_task_cb.conf->jump_cat_weight_g) &&
+                       (0.5 * w_task_cb.conf.jump_cat_weight_g) &&
                    w_task_cb.pir_level) {
             task_data.jump_to_standby_cnt = 0;
             ++task_data.jump_to_bigjump_cnt;
@@ -263,14 +265,14 @@ static void weight_fsm_check_jump(void) {
 
 static void weight_fsm_goto_jump(void) {
     // action
-    task_data.weight_pause_times = w_task_cb.conf->jump_pause_times;
-    task_data.period_ms = w_task_cb.conf->jump_period_ms;
+    task_data.weight_pause_times = w_task_cb.conf.jump_pause_times;
+    task_data.period_ms = w_task_cb.conf.jump_period_ms;
     task_data.ref_adc_exec = false;
-    task_data.jump_to_standby_num = w_task_cb.conf->jump_to_standby_chk;
+    task_data.jump_to_standby_num = w_task_cb.conf.jump_to_standby_chk;
     task_data.jump_to_standby_cnt = 0;
-    task_data.jump_to_bigjump_num = w_task_cb.conf->jump_to_bigjump_chk;
+    task_data.jump_to_bigjump_num = w_task_cb.conf.jump_to_bigjump_chk;
     task_data.jump_to_bigjump_cnt = 0;
-    task_data.jump_num = w_task_cb.conf->jump_chk;
+    task_data.jump_num = w_task_cb.conf.jump_chk;
     task_data.jump_cnt = 0;
     // fsm change
     task_data.now_fsm = WEIGHT_TASK_STAT_JUMP;
@@ -278,7 +280,7 @@ static void weight_fsm_goto_jump(void) {
 
 static void weight_fsm_check_bigjump(void) {
     if ((w_task_cb.now_weight_g - w_task_cb.ref_weight_g) <
-        w_task_cb.conf->standby_active_weight_g) {
+        w_task_cb.conf.standby_active_weight_g) {
         weight_fsm_goto_postevent();
     }
     ++task_data.period_cnt;
@@ -287,7 +289,7 @@ static void weight_fsm_check_bigjump(void) {
 static void weight_fsm_goto_bigjump(void) {
     // action
     board_led_ctrl(LED_TYPE_IR, true); // turn on IR led
-    task_data.period_ms = w_task_cb.conf->bigjump_period_ms;
+    task_data.period_ms = w_task_cb.conf.bigjump_period_ms;
     task_data.period_cnt = 0;
     weight_post_event(task_data.evt_loop, w_task_cb.now_weight_g,
                       RAWDATA_EVENTID_CAT_IN);
@@ -307,7 +309,7 @@ static void weight_fsm_check_postevent(void) {
         ESP_LOGI(
             TAG, "cat druing time: %d ms",
             task_data.period_cnt *
-                w_task_cb.conf->bigjump_period_ms); // record cat during time
+                w_task_cb.conf.bigjump_period_ms); // record cat during time
         weight_post_event(task_data.evt_loop,
                           (w_task_cb.now_weight_g - w_task_cb.ref_weight_g),
                           RAWDATA_EVENTID_CAT_OUT);
@@ -318,9 +320,9 @@ static void weight_fsm_check_postevent(void) {
 static void weight_fsm_goto_postevent(void) {
     // action
     board_led_ctrl(LED_TYPE_BD_W, true); // turn on W led
-    task_data.postevnet_num = w_task_cb.conf->postevnet_chk;
+    task_data.postevnet_num = w_task_cb.conf.postevnet_chk;
     task_data.postevnet_cnt = 0;
-    task_data.period_ms = w_task_cb.conf->postevent_period_ms;
+    task_data.period_ms = w_task_cb.conf.postevent_period_ms;
     // fsm change
     task_data.now_fsm = WEIGHT_TASK_STAT_POSTEVENT;
 }
@@ -352,12 +354,9 @@ static void weight_conf_init_v1(weight_conf_ver1_t *conf) {
 static esp_err_t weight_conf_init(weight_task_cb *task) {
     // if conf OTA changing, that should be migrated into new config version
     if (WEIGHT_CONF_VERSION == 1) {
-        if ((task->conf = malloc(sizeof(weight_conf_ver1_t))) == NULL) {
-            return esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
-        }
-        if (nvs_read_weight_conf((void *)task->conf, 1) != ESP_OK) {
-            weight_conf_init_v1(task->conf);
-            nvs_write_weight_conf((void *)task->conf, 1);
+        if (nvs_read_weight_conf((void *)&task->conf, 1) != ESP_OK) {
+            weight_conf_init_v1(&task->conf);
+            nvs_write_weight_conf((void *)&task->conf, 1);
         }
     } else {
         return ESP_FAIL;
@@ -482,6 +481,12 @@ void weight_list_cali_val(weight_cali_cb *cb) {
         // printf("weight_cali[%d]: %32s %32s\n", i, range_str, formula_str);
         ESP_LOGI(TAG, "weight_cali[%d]: %32s %32s", i, range_str, formula_str);
     }
+}
+
+void weight_update_weight_conf_v1(weight_conf_ver1_t *cfg_v1) {
+    memcpy(&w_task_cb.conf, cfg_v1, sizeof(weight_conf_ver1_t));
+    nvs_write_weight_conf((void *)&w_task_cb.conf, 1);
+    weight_dump_weight_conf_v1(cfg_v1);
 }
 
 void weight_dump_weight_conf_v1(weight_conf_ver1_t *cfg_v1) {
