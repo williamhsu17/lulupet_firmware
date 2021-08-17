@@ -227,8 +227,13 @@ extern "C" {
 // Function
 #define FUNC_TESTING_FW 1
 #if (FUNC_TESTING_FW)
-#define FUNC_CMD_TASK 1 // 1: run console command line interface
+#define FUNC_CMD_TASK 1    // 1: run console command line interface
+#define FUNC_WEIGHT_TASK 0 // 0/1: disable/enable weight task
+#else
+#define FUNC_CMD_TASK 0    // 1: run console command line interface
+#define FUNC_WEIGHT_TASK 1 // 0/1: disable/enable weight task
 #endif
+
 #define FUNC_WEIGHT_FAKE 0 // 1: use fake condition to test fsm
 #define FUNC_ERASE_NVS_BOOTUP                                                  \
     0 // 1: nvs will be earesd during bootup for debugging blufi process
