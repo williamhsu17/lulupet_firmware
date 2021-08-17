@@ -29,10 +29,10 @@ main() {
     ver_str=$(get_version)
     printf "ver_str: $ver_str\n"
     
-    testing_fw_path=./release/testing_fw/$ver_str/$now/
+    testing_fw_path=./release/$now/$ver_str/testing_fw/
     mkdir -p $testing_fw_path
 
-    shipping_fw_path=./release/shipping_fw/$ver_str/$now/
+    shipping_fw_path=./release/$now/$ver_str/shipping_fw/
     mkdir -p $shipping_fw_path
 
     # testing fw
@@ -51,6 +51,11 @@ main() {
     cp build/partitions.bin $shipping_fw_path/.
 
     sed -i 's/FUNC_TESTING_FW 0/FUNC_TESTING_FW 1/g' main/include/util.h
+
+    zip_file="lulupet_release_"$now"_"$ver_str".zip"
+    printf "zip_file: $zip_file\n"
+
+    zip -r $zip_file ./release/$now/$ver
 }
 
 main $*
