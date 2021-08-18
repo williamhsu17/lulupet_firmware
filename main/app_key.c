@@ -15,6 +15,8 @@
 #include "freertos/task.h"
 
 #include "include/app_key.h"
+#include "include/app_led.h"
+#include "include/app_wifi.h"
 #include "include/board_driver.h"
 #include "include/event.h"
 #include "include/nvs_op.h"
@@ -75,6 +77,7 @@ static void gpio_sys_det_task(void *arg) {
     }
 }
 
+#if (FUNC_KEY_EVENT)
 static void key_post_evnet(esp_event_loop_handle_t event_loop,
                            key_event_type_e type) {
 
@@ -86,9 +89,12 @@ static void key_post_evnet(esp_event_loop_handle_t event_loop,
     esp_event_post_to(event_loop, LULUPET_EVENT_BASE, LULUPET_EVENT_KEY, &event,
                       sizeof(event), pdMS_TO_TICKS(100));
 }
+#endif
 
 static void key_task(void *pvParameter) {
+#if (FUNC_KEY_EVENT)
     key_task_config_t *conf = (key_task_config_t *)pvParameter;
+#endif
     bool key_press = false;
     uint8_t press_cnt = 0;
     uint8_t sys_det_cnt = 0;
@@ -180,11 +186,17 @@ static void key_task(void *pvParameter) {
                 ESP_LOGD(TAG, "press cnt: %u press_interval_ms: %u", press_cnt,
                          press_interval_ms);
                 if (press_interval_ms < KEY_3000_MS) {
+                    nvs_reset_wifi_val();
+                    set_led_cmd(LED_RED_SOLID);
+                    vTaskDelay(2000 / portTICK_PERIOD_MS);
+                    app_wifi_system_reset();
+#if (FUNC_KEY_EVENT)
                     key_post_evnet(conf->evt_loop,
                                    KEY_EVENT_PRESS_2_TIMES_WITHIN_3_SEC);
                     // set event cool down time
                     event_cool_down_ms = KEY_3000_MS;
                     event_send_tick = now_tick;
+#endif
                 }
                 press_tick = 0;
                 release_tick = 0;
@@ -200,10 +212,16 @@ static void key_task(void *pvParameter) {
                 press_conti_ms = timer_tick_diff(press_tick, now_tick);
                 ESP_LOGD(TAG, "press_during_ms: %u ms", press_conti_ms);
                 if (press_conti_ms > KEY_5000_MS) {
+                    set_led_cmd(LED_RED_SOLID);
+                    vTaskDelay(2000 / portTICK_PERIOD_MS);
+                    nvs_reset();
+                    app_wifi_system_reset();
+#if (FUNC_KEY_EVENT)
                     key_post_evnet(conf->evt_loop, KEY_EVENT_PRESS_OVER_5_SEC);
                     // set event cool down time
                     event_cool_down_ms = KEY_5000_MS;
                     event_send_tick = now_tick;
+#endif
                 }
             }
         } else {
