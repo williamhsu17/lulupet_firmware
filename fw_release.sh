@@ -38,7 +38,7 @@ main() {
     # testing fw
     make
     cp build/bootloader/bootloader.bin $testing_fw_path/.
-    cp build/lulupet_fw.bin $testing_fw_path/.
+    cp build/lulupet_fw.bin $testing_fw_path/lulupet_fw_testing.bin
     cp build/ota_data_initial.bin $testing_fw_path/.
     cp build/partitions.bin $testing_fw_path/.
     
@@ -46,7 +46,7 @@ main() {
     sed -i 's/FUNC_TESTING_FW 1/FUNC_TESTING_FW 0/g' main/include/util.h
     make
     cp build/bootloader/bootloader.bin $shipping_fw_path/.
-    cp build/lulupet_fw.bin $shipping_fw_path/.
+    cp build/lulupet_fw.bin $shipping_fw_path/lulupet_fw_shipping.bin
     cp build/ota_data_initial.bin $shipping_fw_path/.
     cp build/partitions.bin $shipping_fw_path/.
 
