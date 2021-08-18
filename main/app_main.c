@@ -108,10 +108,8 @@ void app_main() {
 
     fs_task_start(service_event_loop); // Init fs task
     app_key_main(service_event_loop);
-    app_led_main(); // Init led task
-#if (FUNC_CMD_TASK)
+    app_led_main();                      // Init led task
     app_weight_main(service_event_loop); // Init weight task
-#endif
 
     if (init_pass) {
         app_wifi_main(service_event_loop); // Init connect/httpc task

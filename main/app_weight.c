@@ -196,7 +196,13 @@ static void weight_get(void) {
              w_task_cb.ref_weight_g);
 }
 
-static void weight_fsm_check_start(void) { weight_fsm_goto_standby(); }
+static void weight_fsm_check_start(void) {
+#if (FUNC_TESTING_FW)
+    return;
+#else
+    weight_fsm_goto_standby();
+#endif
+}
 
 static void weight_fsm_check_standby(void) {
 #if (!FUNC_WEIGHT_FAKE)
