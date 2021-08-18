@@ -27,7 +27,7 @@
 #define BANNER                                                                 \
     "\n =================================================="                    \
     "\n |                                                |"                    \
-    "\n |        LuluPet AI Litter Box v%d.%d.%d            |"                 \
+    "\n |     LuluPet AI Litter Box %s v%d.%d.%d      |"                       \
     "\n |                                                |"                    \
     "\n |    Print 'help' to gain overview of commands   |"                    \
     "\n |                                                |"                    \
@@ -677,12 +677,20 @@ static void console_init() {
     linenoiseHistorySetMaxLen(100);
 }
 
+void app_cmd_banner(void) {
+    printf(BANNER,
+#if (FUNC_TESTING_FW)
+           "Testing ",
+#else
+           "Shipping",
+#endif
+           VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
+}
+
 void app_cmd_main(esp_event_loop_handle_t event_loop) {
     static_event_loop = event_loop;
 
     console_init();
-
-    printf(BANNER, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
 
     /* Prompt to be printed before each line.
      * This can be customized, made dynamic, etc.
