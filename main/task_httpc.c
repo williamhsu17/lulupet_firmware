@@ -899,6 +899,7 @@ static void ota_check(bool force) {
     }
 }
 
+#if (!FUNC_TESTING_FW) // testing firmware do not do that
 static void first_connect_to_wifi(void) {
     ESP_LOGW(TAG, "1st wifi connected");
 
@@ -917,6 +918,7 @@ static void first_connect_to_wifi(void) {
     http_photo_buf_push_ram(&event);
     http_send_photo_process(HTTPC_PHOTO_SRC_RAM);
 }
+#endif // #if (!FUNC_TESTING_FW)
 
 static void httpc_task(void *pvParameter) {
     httpc_task_config_t *conf = (httpc_task_config_t *)pvParameter;
@@ -940,8 +942,10 @@ static void httpc_task(void *pvParameter) {
                 wifi_connected = true;
                 if (first_wifi_connected == false && app_wifi_check_sntp()) {
                     first_wifi_connected = true;
+#if (!FUNC_TESTING_FW) // testing firmware do not do that
                     save_timeval_into_nvs();
                     first_connect_to_wifi();
+#endif
                 }
             } else {
                 wifi_connected = false;

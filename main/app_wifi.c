@@ -86,12 +86,6 @@ static void wifi_init_from_nvs(void) {
     ESP_ERROR_CHECK(esp_wifi_start());
 }
 
-static void wifi_system_reset(void) {
-    ESP_LOGW(TAG, "reboot");
-    set_led_cmd(LED_ALL_OFF);
-    esp_restart();
-}
-
 static void wifi_check_connect(uint32_t wait_ms, uint8_t retry) {
 
     if (retry == 0) {
@@ -112,7 +106,7 @@ static void wifi_check_connect(uint32_t wait_ms, uint8_t retry) {
     while (1) {
         vTaskDelay(WIFI_CHECK_KEY_TIMES_MS / portTICK_PERIOD_MS);
         wifi_check_key_time += WIFI_CHECK_KEY_TIMES_MS;
-
+#if 0
         if (task_conn_cb.key_event.key_event_type ==
             KEY_EVENT_PRESS_2_TIMES_WITHIN_3_SEC) {
             ESP_LOGW(
@@ -122,9 +116,10 @@ static void wifi_check_connect(uint32_t wait_ms, uint8_t retry) {
                 KEY_EVENT_NONE; // reset key event
             nvs_reset_wifi_val();
             vTaskDelay(WIFI_CHECK_KEY_TIMES_MS / portTICK_PERIOD_MS);
-            wifi_system_reset();
+            app_wifi_system_reset();
         }
-
+#endif
+#if 0
         if (task_conn_cb.key_event.key_event_type ==
             KEY_EVENT_PRESS_OVER_5_SEC) {
             ESP_LOGW(
@@ -132,11 +127,12 @@ static void wifi_check_connect(uint32_t wait_ms, uint8_t retry) {
                 app_key_event_type_str(task_conn_cb.key_event.key_event_type));
             task_conn_cb.key_event.key_event_type =
                 KEY_EVENT_NONE; // reset key event
-            wifi_system_reset();
+            app_wifi_system_reset();
         }
+#endif
 
         if (wifi_check_key_time >= WIFI_CHECK_WAIT_TIME_MS) {
-            wifi_system_reset();
+            app_wifi_system_reset();
         }
     }
 }
@@ -276,12 +272,22 @@ static void wifi_start(esp_event_loop_handle_t event_loop) {
                                     service_connect_event_handler, NULL);
 
     wifi_event_init();
+#if (FUNC_TESTING_FW)
+    ESP_LOGI(TAG, "load lid, token, AP from default");
+    snprintf(lulupet_lid_get, sizeof(lulupet_lid_get), TEST_LID_NUM);
+    snprintf(lulupet_token_get, sizeof(lulupet_token_get), TEST_TOKEN);
+    snprintf((char *)sta_config.sta.ssid, sizeof(sta_config.sta.ssid),
+             TEST_AP_SSID);
+    snprintf((char *)sta_config.sta.password, sizeof(sta_config.sta.password),
+             TEST_AP_PWD);
+#else
     ESP_LOGI(TAG, "load lid token from nvs");
     nvs_read_lid_token(lulupet_lid_get, sizeof(lulupet_lid_get),
                        lulupet_token_get,
                        sizeof(lulupet_token_get)); // TODO: error handling
     ESP_LOGI(TAG, "load WiFi Setting from nvs");
     nvs_read_wifi_config(&sta_config); // TODO: error handling
+#endif
     wifi_init_from_nvs();
     set_led_cmd(LED_GREEN_1HZ);
     wifi_check_connect(WIFI_CONN_CHK_MS, WIFI_CONN_RETRY);
@@ -309,13 +315,24 @@ bool app_wifi_check_connect(uint32_t wait_ms) {
 
 bool app_wifi_check_sntp(void) { return task_conn_cb.ntp_done; }
 
+void app_wifi_system_reset(void) {
+    ESP_LOGW(TAG, "reboot");
+    set_led_cmd(LED_ALL_OFF);
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+    esp_restart();
+}
+
 void app_wifi_main(esp_event_loop_handle_t event_loop) {
     ESP_LOGI(TAG, "start connect process");
-
+#if (FUNC_TESTING_FW)
+    wifi_start(event_loop);
+    start_httpc_task(event_loop);
+#else
     if (!nvs_read_wifichecked()) {
         blufi_start(event_loop);
     } else {
         wifi_start(event_loop);
         start_httpc_task(event_loop);
     }
+#endif
 }
