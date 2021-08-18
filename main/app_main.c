@@ -102,6 +102,8 @@ void app_main() {
         init_pass = false;
     }
 
+    app_cmd_banner();
+
 #if (FUNC_CMD_TASK)
     app_cmd_main(service_event_loop); // Init command line interface
 #endif

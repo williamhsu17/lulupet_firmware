@@ -51,7 +51,7 @@ typedef struct {
     volatile float now_weight_g; // unit:g
     int pir_level;
 
-    weight_conf_ver1_t *conf;
+    weight_conf_ver1_t conf;
 
     weight_cali_cb cali_cb; // param can be set by nvs
 } weight_task_cb;
@@ -121,6 +121,15 @@ void weight_list_cali_val_ram(void);
  * @retval none
  */
 void weight_list_cali_val(weight_cali_cb *cb);
+
+/**
+ * @brief Update the weight configration value.
+ *
+ * @param cfg_v1[in] weight_conf_ver1_t structure.
+ *
+ * @retval none
+ */
+void weight_update_weight_conf_v1(weight_conf_ver1_t *cfg_v1);
 
 /**
  * @brief Dump the weight configration value.

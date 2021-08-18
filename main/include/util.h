@@ -8,8 +8,8 @@ extern "C" {
 #include "sdkconfig.h"
 
 // Version
-#define VERSION_MAJOR 0
-#define VERSION_MINOR 2
+#define VERSION_MAJOR 1
+#define VERSION_MINOR 0
 #define VERSION_PATCH 0
 
 // bitwise
@@ -228,11 +228,23 @@ extern "C" {
 #define FUNC_TESTING_FW 1
 #if (FUNC_TESTING_FW)
 #define FUNC_CMD_TASK 1 // 1: run console command line interface
+#else
+#define FUNC_CMD_TASK                                                          \
+    1 // 1: run console command line interface. TODO: shipping firmware to test
 #endif
+
 #define FUNC_WEIGHT_FAKE 0 // 1: use fake condition to test fsm
 #define FUNC_ERASE_NVS_BOOTUP                                                  \
     0 // 1: nvs will be earesd during bootup for debugging blufi process
 #define FUNC_PHOTO_RINGBUFFER 1 // 1: photo will be saved when wifi dosconnected
+#define FUNC_KEY_EVENT 0
+
+// Testing firmware default value
+#define TEST_AP_SSID "lulupet"
+#define TEST_AP_PWD "lulu1234"
+#define TEST_LID_NUM "lid_42531"
+#define TEST_TOKEN                                                             \
+    "dfb130488f1cb3ef978b3b5a33d4736b115d023e8ba4fc744a0ac0913a3ba38c"
 
 // HTTP URL
 #define SERVER_URL "lulupet.williamhsu.com.tw"
@@ -242,6 +254,8 @@ extern "C" {
 
 #define HTTP_OTA_UPDATE_LATEST_URL                                             \
     "http://lulupet.williamhsu.com.tw/ota_update/latest"
+#define HTTP_OTA_UPDATE_CONFIG_LATEST_URL                                      \
+    "http://lulupet.williamhsu.com.tw/ota_update/config/latest/"
 
 #define HTTPS_PHOTO_URL "https://lulupet.williamhsu.com.tw/imageHelper/"
 #define HTTPS_ENABLE_URL "https://lulupet.williamhsu.com.tw/litter/enable/"

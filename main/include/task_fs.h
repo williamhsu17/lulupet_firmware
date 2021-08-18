@@ -20,6 +20,8 @@ esp_err_t fs_load_photo(weight_take_photo_event_t *take_photo_evt,
 bool fs_check_photo_cfg_exist(void);
 void fs_remove_all_files(void);
 void fs_list(void);
+esp_err_t fs_parser_weight_cfg_v1(char *content,
+                                  weight_conf_ver1_t *weight_confg_v1);
 
 #ifdef __cplusplus
 }

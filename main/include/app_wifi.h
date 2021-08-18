@@ -40,6 +40,7 @@ char *app_wifi_get_lid(void);
 char *app_wifi_get_token(void);
 bool app_wifi_check_connect(uint32_t wait_ms);
 bool app_wifi_check_sntp(void);
+void app_wifi_system_reset(void);
 void app_wifi_main(esp_event_loop_handle_t event_loop);
 
 #ifdef __cplusplus

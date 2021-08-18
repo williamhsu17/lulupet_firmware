@@ -29,16 +29,16 @@ main() {
     ver_str=$(get_version)
     printf "ver_str: $ver_str\n"
     
-    testing_fw_path=./release/testing_fw/$ver_str/$now/
+    testing_fw_path=./release/$now/$ver_str/testing_fw/
     mkdir -p $testing_fw_path
 
-    shipping_fw_path=./release/shipping_fw/$ver_str/$now/
+    shipping_fw_path=./release/$now/$ver_str/shipping_fw/
     mkdir -p $shipping_fw_path
 
     # testing fw
     make
     cp build/bootloader/bootloader.bin $testing_fw_path/.
-    cp build/lulupet_fw.bin $testing_fw_path/.
+    cp build/lulupet_fw.bin $testing_fw_path/lulupet_fw_testing.bin
     cp build/ota_data_initial.bin $testing_fw_path/.
     cp build/partitions.bin $testing_fw_path/.
     
@@ -46,11 +46,16 @@ main() {
     sed -i 's/FUNC_TESTING_FW 1/FUNC_TESTING_FW 0/g' main/include/util.h
     make
     cp build/bootloader/bootloader.bin $shipping_fw_path/.
-    cp build/lulupet_fw.bin $shipping_fw_path/.
+    cp build/lulupet_fw.bin $shipping_fw_path/lulupet_fw_shipping.bin
     cp build/ota_data_initial.bin $shipping_fw_path/.
     cp build/partitions.bin $shipping_fw_path/.
 
     sed -i 's/FUNC_TESTING_FW 0/FUNC_TESTING_FW 1/g' main/include/util.h
+
+    zip_file="lulupet_release_"$now"_"$ver_str".zip"
+    printf "zip_file: $zip_file\n"
+
+    zip -r $zip_file ./release/$now/$ver
 }
 
 main $*
