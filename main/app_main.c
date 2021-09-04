@@ -109,7 +109,9 @@ void app_main() {
 #endif
 
     fs_task_start(service_event_loop); // Init fs task
+#if (!FUNC_CMD_TASK)
     app_key_main(service_event_loop);
+#endif
     app_led_main();                      // Init led task
     app_weight_main(service_event_loop); // Init weight task
 

@@ -66,9 +66,9 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt);
 static esp_err_t http_post_imageHelper(esp_http_client_handle_t client,
                                        char *json_url_val, int json_url_val_len,
                                        camera_fb_t *fb);
-static void http_post_rawdata(esp_http_client_handle_t client,
-                              char *json_url_val, time_t timestamp,
-                              weight_take_photo_event_t *take_photo_event);
+static esp_err_t http_post_rawdata(esp_http_client_handle_t client,
+                                   char *json_url_val, time_t timestamp,
+                                   weight_take_photo_event_t *take_photo_event);
 static void http_send_photo_buf(httpc_photo_buf_t *photo_buf,
                                 esp_http_client_handle_t client,
                                 char *json_url_val, int json_url_val_len);
@@ -330,17 +330,19 @@ http_post_photo_end:
     return esp_err;
 }
 
-static void http_post_rawdata(esp_http_client_handle_t client,
-                              char *json_url_val, time_t timestamp,
-                              weight_take_photo_event_t *take_photo_event) {
+static esp_err_t
+http_post_rawdata(esp_http_client_handle_t client, char *json_url_val,
+                  time_t timestamp,
+                  weight_take_photo_event_t *take_photo_event) {
     int client_wr_len;
     int content_length;
-    esp_err_t err;
+    esp_err_t esp_err;
     bool client_open = false;
     char *json_str = NULL;
     char *post_data_raw = calloc(HTTP_POST_RAW_DATA_LEN, sizeof(char));
     if (post_data_raw == NULL) {
-        esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
+        esp_err = ESP_ERR_NO_MEM;
+        esp_err_print(esp_err, __func__, __LINE__);
         goto http_post_raw_end;
     }
 
@@ -360,8 +362,9 @@ static void http_post_rawdata(esp_http_client_handle_t client,
         client, "X-CSRFToken",
         "eA8ob2RLGxH6sQ7njh6pokrwNNTxR7gDqpfhPY9VyO8M9B8HZIaMFrKClihBLO39");
 
-    if ((err = esp_http_client_open(client, strlen(post_data_raw))) != ESP_OK) {
-        esp_err_print(ESP_ERR_NO_MEM, __func__, __LINE__);
+    if ((esp_err = esp_http_client_open(client, strlen(post_data_raw))) !=
+        ESP_OK) {
+        esp_err_print(esp_err, __func__, __LINE__);
         goto http_post_raw_end;
     }
     client_open = true;
@@ -369,25 +372,29 @@ static void http_post_rawdata(esp_http_client_handle_t client,
 
     if ((client_wr_len = esp_http_client_write(client, post_data_raw,
                                                strlen(post_data_raw))) < 0) {
-        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        esp_err = ESP_FAIL;
+        esp_err_print(esp_err, __func__, __LINE__);
         goto http_post_raw_end;
     }
     ESP_LOGI(TAG, "http client write, length: %d", client_wr_len);
 
     if ((content_length = esp_http_client_fetch_headers(client)) < 0) {
+        esp_err = ESP_FAIL;
         esp_err_print(ESP_FAIL, __func__, __LINE__);
         goto http_post_raw_end;
     }
     ESP_LOGI(TAG, "http client fetech, length: %d", content_length);
 
     if (content_length > MAX_HTTP_RECV_BUFFER) {
+        esp_err = ESP_FAIL;
         esp_err_print(ESP_FAIL, __func__, __LINE__);
         goto http_post_raw_end;
     }
 
     json_str = calloc(MAX_HTTP_RECV_BUFFER + 1, sizeof(char));
     if (json_str == NULL) {
-        esp_err_print(ESP_FAIL, __func__, __LINE__);
+        esp_err = ESP_ERR_NO_MEM;
+        esp_err_print(esp_err, __func__, __LINE__);
         goto http_post_raw_end;
     }
 
@@ -395,6 +402,7 @@ static void http_post_rawdata(esp_http_client_handle_t client,
 
     if ((read_len = esp_http_client_read(client, json_str, content_length)) <=
         0) {
+        esp_err = ESP_FAIL;
         esp_err_print(ESP_FAIL, __func__, __LINE__);
         goto http_post_raw_end;
     }
@@ -412,26 +420,39 @@ http_post_raw_end:
         esp_http_client_close(client);
         ESP_LOGI(TAG, "http client close");
     }
+
+    return esp_err;
 }
 
 static void http_send_photo_buf(httpc_photo_buf_t *photo_buf,
                                 esp_http_client_handle_t client,
                                 char *json_url_val, int json_url_val_len) {
-    esp_err_t esp_err;
+    esp_err_t esp_err_post_imagehelper;
     for (int i = 0; i < HTTP_POST_IMAGEHELPER_RETRY; ++i) {
-        if ((esp_err =
+        if ((esp_err_post_imagehelper =
                  http_post_imageHelper(client, json_url_val, JSON_URL_VAL_LEN,
                                        photo_buf->fb)) == ESP_OK)
             break;
     }
 
-    if (esp_err != ESP_OK) {
+    if (esp_err_post_imagehelper != ESP_OK) {
         snprintf(json_url_val, json_url_val_len, "%s_%d",
                  HTTP_POST_IMAGEHELPER_RETRY_FAILED_STR, task_conf.err_line);
     }
 
-    http_post_rawdata(client, json_url_val, photo_buf->unix_timestamp,
-                      &photo_buf->weight_take_photo_evt);
+    esp_err_t esp_err_post_rawdata;
+    esp_err_post_rawdata =
+        http_post_rawdata(client, json_url_val, photo_buf->unix_timestamp,
+                          &photo_buf->weight_take_photo_evt);
+
+#if (FUNC_TESTING_FW)
+    if (esp_err_post_imagehelper == ESP_OK && esp_err_post_rawdata == ESP_OK)
+        printf("ok\n");
+    else
+        printf("err: imageHelper[%s], rawdata[%s]\n",
+               esp_err_to_name(esp_err_post_imagehelper),
+               esp_err_to_name(esp_err_post_rawdata));
+#endif
 }
 
 static int http_get_ota_update_config_latest(httpc_ota_event_t *event,
@@ -1048,11 +1069,21 @@ void http_photo_buf_push_ram(weight_take_photo_event_t *take_photo_event) {
     memcpy(&photo_buf->weight_take_photo_evt, take_photo_event,
            sizeof(weight_take_photo_event_t));
     photo_buf->unix_timestamp = time(NULL);
-    camera_take_photo(&photo_buf->fb);
+    esp_err_t esp_err = camera_take_photo(&photo_buf->fb);
+    if (esp_err != ESP_OK) {
+#if (FUNC_TESTING_FW)
+        printf("err: take photo failed");
+#endif
+        return;
+    }
+
     if (photo_buf->fb->format != PIXFORMAT_JPEG) {
         ESP_LOGE(TAG, "camera use the %d format",
                  photo_buf->fb->format); // TODO: record into fetal error nvs
         esp_camera_fb_return(photo_buf->fb);
+#if (FUNC_TESTING_FW)
+        printf("err: photo format failed");
+#endif
         return;
     }
 
