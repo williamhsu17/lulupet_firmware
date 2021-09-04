@@ -67,25 +67,25 @@ static void init_cam_gpio(void) {
     gpio_set_level(GPIO_OUTPUT_CAMPWR, 1);
 }
 
-void camera_take_photo(camera_fb_t **fb) {
+esp_err_t camera_take_photo(camera_fb_t **fb) {
     *fb = esp_camera_fb_get();
 
     if (!fb) {
         ESP_LOGE(TAG, "camera take photo failed");
-        esp_camera_fb_return(*fb);
+#if (!FUNC_TESTING_FW)
         ESP_LOGE(
             TAG,
             "resolve camera problem, reboot system"); // TODO: record into log
-        while (1) {
-            vTaskDelay(pdMS_TO_TICKS(1000));
-        }
         esp_restart();
-        return;
+#endif
+        return ESP_FAIL;
     }
 
     ESP_LOGI(TAG, "camera take photo ok len[%d], w[%d], h[%d], format[%d-%s]",
              (*fb)->len, (*fb)->width, (*fb)->height, (*fb)->format,
              pixformat_str[(*fb)->format]);
+
+    return ESP_OK;
 }
 
 void camera_return_photo(camera_fb_t **fb) { esp_camera_fb_return(*fb); }
