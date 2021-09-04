@@ -24,6 +24,9 @@
 
 #define TAG "cmd"
 
+#define CMD_OK "ok"
+#define CMD_ERR_NOT_SUPPORT "err: not support"
+
 #define BANNER                                                                 \
     "\n =================================================="                    \
     "\n |                                                |"                    \
@@ -110,11 +113,13 @@ static int cmd_fs_rm(int argc, char **argv) {
     struct stat file_stat;
     if (strcmp(cmd_fs_rm_args.filename->sval[0], "all") == 0) {
         fs_remove_all_files();
+        printf("%s\n", CMD_OK);
     } else if (stat(cmd_fs_rm_args.filename->sval[0], &file_stat) == 0) {
         printf("rm %s\n", cmd_fs_rm_args.filename->sval[0]);
         remove(cmd_fs_rm_args.filename->sval[0]);
+        printf("%s\n", CMD_OK);
     } else {
-        printf("%s did not exist\n", cmd_fs_rm_args.filename->sval[0]);
+        printf("err: %s did not exist\n", cmd_fs_rm_args.filename->sval[0]);
     }
 
     return 0;
@@ -122,7 +127,7 @@ static int cmd_fs_rm(int argc, char **argv) {
 
 static int cmd_fs_status(int argc, char **argv) {
     if (fs_get_mount() != true) {
-        printf("fs isn't be mounted yet\n");
+        printf("err: fs isn't be mounted yet\n");
     }
 
     size_t bytes_total, bytes_free;
@@ -130,6 +135,7 @@ static int cmd_fs_status(int argc, char **argv) {
     printf("fs: free/total = %d/%d kB\n", bytes_free / 1024,
            bytes_total / 1024);
     fs_list();
+    printf("%s\n", CMD_OK);
 
     return 0;
 }
@@ -137,6 +143,7 @@ static int cmd_fs_status(int argc, char **argv) {
 static int cmd_photo_send(int argc, char **argv) {
     http_send_photo_process(HTTPC_PHOTO_SRC_RAM);
     http_send_photo_process(HTTPC_PHOTO_SRC_FS);
+    printf("%s\n", CMD_OK);
     return 0;
 }
 
@@ -158,19 +165,22 @@ static int cmd_photo_push(int argc, char **argv) {
     } else {
         http_photo_buf_push_fs(&event);
     }
+    // move the response into app_httpc task
 
     return 0;
 
 cmd_photo_push_err:
     arg_print_errors(stderr, cmd_photo_push_args.end, argv[0]);
+    printf("%s\n", CMD_ERR_NOT_SUPPORT);
     return -1;
 }
 
 static int cmd_nvs_reset(int argc, char **argv) {
-    if (nvs_reset() == ESP_OK) {
-        printf("ok\n");
+    esp_err_t esp_err;
+    if ((esp_err = nvs_reset()) == ESP_OK) {
+        printf("%s\n", CMD_OK);
     } else {
-        printf("failed\n");
+        printf("err: %s\n", esp_err_to_name(esp_err));
     }
 
     return 0;
@@ -180,7 +190,7 @@ static int cmd_nvs_read(int argc, char **argv) {
     // weight_cali_cb
     weight_cali_cb weight_cali;
     if (nvs_cali_read_weight_clai_cb(&weight_cali) != ESP_OK) {
-        printf("weight_clai_cb did not exist\n");
+        printf("warn: weight_clai_cb did not exist\n");
     }
 
     nvs_read_wifichecked();
@@ -188,7 +198,7 @@ static int cmd_nvs_read(int argc, char **argv) {
     // wificonfig
     wifi_config_t wifi_cfg;
     if (nvs_read_wifi_config(&wifi_cfg) != ESP_OK) {
-        printf("wificonfig did not exist\n");
+        printf("warn: wificonfig did not exist\n");
     }
 
     // applid, apptoken
@@ -196,26 +206,28 @@ static int cmd_nvs_read(int argc, char **argv) {
     char token_get[NVS_LULUPET_TOKEN_LEN];
     if (nvs_read_lid_token(lid_get, sizeof(lid_get), token_get,
                            sizeof(token_get)) != ESP_OK) {
-        printf("applid, apptoken did not exist\n");
+        printf("warn: applid, apptoken did not exist\n");
     }
 
     // appauto_update
     uint8_t auto_update;
     if (nvs_read_auto_update(&auto_update) != ESP_OK) {
-        printf("appauto_update did not exist\n");
+        printf("warn: appauto_update did not exist\n");
     }
 
     // nvs_read_weight_conf
     weight_conf_ver1_t weight_conf_v1;
     if (nvs_read_weight_conf((void *)&weight_conf_v1, 1) != ESP_OK) {
-        printf("weight_cfg_v1 did not exist\n");
+        printf("warn: weight_cfg_v1 did not exist\n");
     }
 
     // nvs_rtc_timeval
     struct timeval time_val;
     if ((nvs_read_rtc_timeval(&time_val)) != ESP_OK) {
-        printf("rtc_timeval did not exist\n");
+        printf("warn: rtc_timeval did not exist\n");
     }
+
+    printf("%s\n", CMD_OK);
 
     return 0;
 }
@@ -225,7 +237,7 @@ static int cmd_ota(int argc, char **argv) {
     esp_err_t esp_err = httpc_ota_post_event(static_event_loop);
 
     if (esp_err == ESP_OK)
-        printf("ok\n");
+        printf("%s\n", CMD_OK);
     else
         printf("err: %s\n", esp_err_to_name(esp_err));
 
@@ -246,7 +258,7 @@ static int cmd_pir_pwr(int argc, char **argv) {
     err = board_set_pir_pwr((bool)cmd_pir_pwr_args.en->ival[0]);
 
     if (err == ESP_OK)
-        printf("ok\n");
+        printf("%s\n", CMD_OK);
     else
         printf("err: %s\n", esp_err_to_name(err));
 
@@ -254,16 +266,19 @@ static int cmd_pir_pwr(int argc, char **argv) {
 
 cmd_pir_pwr_err:
     arg_print_errors(stderr, cmd_pir_pwr_args.end, argv[0]);
+    printf("%s\n", CMD_ERR_NOT_SUPPORT);
     return -1;
 }
 
 static int cmd_pir_status(int argc, char **argv) {
     printf("pir: %s\n", board_get_pir_status() ? "trigger" : "non-trigger");
+    printf("%s\n", CMD_OK);
     return 0;
 }
 
 static int cmd_key_status(int argc, char **argv) {
     printf("key: %s\n", board_get_key_status() ? "press" : "release");
+    printf("%s\n", CMD_OK);
     return 0;
 }
 
@@ -296,7 +311,7 @@ static int cmd_led_set(int argc, char **argv) {
     }
 
     if (err == ESP_OK)
-        printf("ok\n");
+        printf("%s\n", CMD_OK);
     else
         printf("err: %s\n", esp_err_to_name(err));
 
@@ -304,6 +319,7 @@ static int cmd_led_set(int argc, char **argv) {
 
 cmd_led_set_err:
     arg_print_errors(stderr, cmd_led_set_args.end, argv[0]);
+    printf("%s\n", CMD_ERR_NOT_SUPPORT);
     return -1;
 }
 
@@ -333,11 +349,13 @@ static int cmd_weight_condition_set(int argc, char **argv) {
                            NULL);
         goto cmd_weight_condition_set_err;
     }
+    printf("%s\n", CMD_OK);
 
     return 0;
 
 cmd_weight_condition_set_err:
     arg_print_errors(stderr, cmd_weight_condition_set_args.end, argv[0]);
+    printf("%s\n", CMD_ERR_NOT_SUPPORT);
     return -1;
 }
 #endif
@@ -379,6 +397,7 @@ static int cmd_weight_get_val(int argc, char **argv) {
     if (err == ESP_OK) {
         printf("adc: %.3f\n", adc);
         printf("weight: %.3f g\n", g);
+        printf("%s\n", CMD_OK);
     } else {
         printf("adc: %.3f\n", adc);
         printf("weight: %.3f g\n", g);
@@ -389,6 +408,7 @@ static int cmd_weight_get_val(int argc, char **argv) {
 
 cmd_weight_get_val_err:
     arg_print_errors(stderr, cmd_weight_get_val_args.end, argv[0]);
+    printf("%s\n", CMD_ERR_NOT_SUPPORT);
     return -1;
 }
 
@@ -431,10 +451,13 @@ static int cmd_weight_set_cali(int argc, char **argv) {
         goto cmd_weight_set_cali_err;
     }
 
+    printf("%s\n", CMD_OK);
+
     return 0;
 
 cmd_weight_set_cali_err:
     arg_print_errors(stderr, cmd_weight_set_cali_args.end, argv[0]);
+    printf("%s\n", CMD_ERR_NOT_SUPPORT);
     return -1;
 }
 
