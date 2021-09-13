@@ -347,7 +347,7 @@ http_post_rawdata(esp_http_client_handle_t client, char *json_url_val,
     }
 
     snprintf(post_data_raw, HTTP_POST_RAW_DATA_LEN,
-             "lid=%s&token=%s&eventid=%d&weight=%u&pir=%d&pic=%s&tt=%ld",
+             "lid=%s&token=%s&eventid=%d&weight=%d&pir=%d&pic=%s&tt=%ld",
              app_wifi_get_lid(), app_wifi_get_token(),
              take_photo_event->eventid, take_photo_event->weight_g,
              take_photo_event->pir_val, json_url_val, timestamp);
