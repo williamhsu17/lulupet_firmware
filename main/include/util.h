@@ -240,8 +240,13 @@ extern "C" {
 #define FUNC_KEY_EVENT 0
 
 // Testing firmware default value
+#if 1
 #define TEST_AP_SSID "lulupet"
 #define TEST_AP_PWD "lulu1234"
+#else
+#define TEST_AP_SSID "SlingXCorp"
+#define TEST_AP_PWD "25413113"
+#endif
 #define TEST_LID_NUM "lid_42531"
 #define TEST_TOKEN                                                             \
     "dfb130488f1cb3ef978b3b5a33d4736b115d023e8ba4fc744a0ac0913a3ba38c"
