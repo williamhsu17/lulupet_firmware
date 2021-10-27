@@ -107,12 +107,12 @@ void app_main() {
 #if (FUNC_CMD_TASK)
     app_cmd_main(service_event_loop); // Init command line interface
 #endif
-
     fs_task_start(service_event_loop); // Init fs task
-#if (!FUNC_CMD_TASK)
-    app_key_main(service_event_loop);
+#if (!FUNC_TESTING_FW)
+    app_key_main(service_event_loop); // Init key task
 #endif
-    app_led_main();                      // Init led task
+    app_led_main();
+
     app_weight_main(service_event_loop); // Init weight task
 
     if (init_pass) {
