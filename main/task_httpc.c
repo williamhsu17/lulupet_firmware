@@ -858,7 +858,9 @@ static void load_timeval_from_nvs(void) {
 }
 
 static void ota_check(bool force) {
-    char url[256];
+    char url
+        [256]; // ex.: ota url:
+               // http://lulupet.williamhsu.com.tw/media/ota_file/lulupet_fw_v0.2.0.bin
     char ver_str[8];
 
     if (http_get_ota_update_config_latest(&task_conf.ota_evt, url, sizeof(url),

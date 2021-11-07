@@ -25,7 +25,7 @@
 
 #define TAG "key_task"
 
-#define KEY_TASK_PERIOD_MS 10
+#define KEY_TASK_PERIOD_MS 50
 #define KEY_5000_MS 5000
 #define KEY_3000_MS 3000
 #define KEY_COOL_DOWN_MS 10000
@@ -181,9 +181,9 @@ static void key_task(void *pvParameter) {
 
             // check key press 2 times within 3 seconds
             if (press_cnt != 0 && release_tick != 0) {
-                ESP_LOGD(TAG, "latest release_tick: %d", release_tick);
+                ESP_LOGI(TAG, "latest release_tick: %d", release_tick);
                 press_interval_ms = timer_tick_diff(release_tick, now_tick);
-                ESP_LOGD(TAG, "press cnt: %u press_interval_ms: %u", press_cnt,
+                ESP_LOGI(TAG, "press cnt: %u press_interval_ms: %u", press_cnt,
                          press_interval_ms);
                 if (press_interval_ms < KEY_3000_MS) {
                     nvs_reset_wifi_val();
@@ -210,7 +210,7 @@ static void key_task(void *pvParameter) {
             } else {
                 // check key press over 5 seconds
                 press_conti_ms = timer_tick_diff(press_tick, now_tick);
-                ESP_LOGD(TAG, "press_during_ms: %u ms", press_conti_ms);
+                ESP_LOGI(TAG, "press_during_ms: %u ms", press_conti_ms);
                 if (press_conti_ms > KEY_5000_MS) {
                     set_led_cmd(LED_RED_SOLID);
                     vTaskDelay(2000 / portTICK_PERIOD_MS);
