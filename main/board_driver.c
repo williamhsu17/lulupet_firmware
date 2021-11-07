@@ -4,6 +4,7 @@
 #include "esp_log.h"
 
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #include "include/app_weight.h"
 #include "include/board_driver.h"
@@ -14,6 +15,8 @@
 #include <string.h>
 
 #define TAG "board_drv"
+
+#define BOARD_DRIVER_I2C0_TIMEOUT_MS 3000
 
 typedef struct {
     uint8_t address;
@@ -30,6 +33,8 @@ typedef enum {
     GPIO_OUTPUT_LOW = 0,
     GPIO_OUTPUT_HIGH = 1,
 } gpio_output_level_e;
+
+SemaphoreHandle_t i2c0_mutex;
 
 static reg_led_cb_t reg_led_cb[] = {
     {
@@ -370,21 +375,21 @@ esp_err_t i2c_RV3029_readTIME(i2c_port_t i2c_num, unsigned int *buffer) {
     uint8_t *reg_sec = (uint8_t *)malloc(sizeof(uint8_t));
     uint8_t *reg_min = (uint8_t *)malloc(sizeof(uint8_t));
     uint8_t *reg_hour = (uint8_t *)malloc(sizeof(uint8_t));
+
+    xSemaphoreTake(i2c0_mutex, portMAX_DELAY);
+
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, RV3029_CHIP_ADDR << 1 | WRITE_BIT, ACK_CHECK_EN);
     i2c_master_write_byte(cmd, RV3029_TIME_ADDR, ACK_CHECK_EN);
     i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+    ret = i2c_master_cmd_begin(i2c_num, cmd,
+                               BOARD_DRIVER_I2C0_TIMEOUT_MS / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
     if (ret != ESP_OK) {
-        free(reg_sec);
-        free(reg_min);
-        free(reg_hour);
-        return ret;
+        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(ret), __LINE__);
+        goto _end;
     }
-
-    vTaskDelay(30 / portTICK_RATE_MS);
 
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
@@ -393,13 +398,12 @@ esp_err_t i2c_RV3029_readTIME(i2c_port_t i2c_num, unsigned int *buffer) {
     i2c_master_read(cmd, reg_min, 1, ACK_VAL);
     i2c_master_read(cmd, reg_hour, 1, NACK_VAL);
     i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+    ret = i2c_master_cmd_begin(i2c_num, cmd,
+                               BOARD_DRIVER_I2C0_TIMEOUT_MS / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
     if (ret != ESP_OK) {
-        free(reg_sec);
-        free(reg_min);
-        free(reg_hour);
-        return ret;
+        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(ret), __LINE__);
+        goto _end;
     }
     time_sec = ((*reg_sec) >> 4) * 10 + (0xf & (*reg_sec));
     time_min = ((*reg_min) >> 4) * 10 + (0xf & (*reg_min));
@@ -412,9 +416,12 @@ esp_err_t i2c_RV3029_readTIME(i2c_port_t i2c_num, unsigned int *buffer) {
     }
     // ESP_LOGE(TAG, "I2C RTC Read:%d %d %d", time_hour, time_min, time_sec);
     *buffer = time_sec + time_min * 100 + time_hour * 10000;
+
+_end:
     free(reg_sec);
     free(reg_min);
     free(reg_hour);
+    xSemaphoreGive(i2c0_mutex);
     return ret;
 }
 
@@ -422,6 +429,9 @@ esp_err_t i2c_RV3029_writeTIME(i2c_port_t i2c_num, int time_hour, int time_min,
                                int time_sec) {
     esp_err_t ret;
     i2c_cmd_handle_t cmd;
+
+    xSemaphoreTake(i2c0_mutex, portMAX_DELAY);
+
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, RV3029_CHIP_ADDR << 1 | WRITE_BIT, ACK_CHECK_EN);
@@ -430,13 +440,16 @@ esp_err_t i2c_RV3029_writeTIME(i2c_port_t i2c_num, int time_hour, int time_min,
     i2c_master_write_byte(cmd, time_min, ACK_CHECK_EN);
     i2c_master_write_byte(cmd, time_hour, ACK_CHECK_EN);
     i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+    ret = i2c_master_cmd_begin(i2c_num, cmd,
+                               BOARD_DRIVER_I2C0_TIMEOUT_MS / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
+
     if (ret != ESP_OK) {
-        return ret;
+        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(ret), __LINE__);
     }
 
-    // ESP_LOGE(TAG, "I2C RTC Write:%x %x %x", time_hour, time_min, time_sec);
+    xSemaphoreGive(i2c0_mutex);
+
     return ret;
 }
 
@@ -448,22 +461,21 @@ esp_err_t i2c_RV3029_readDay(i2c_port_t i2c_num, unsigned int *buffer) {
     uint8_t *reg_weekday = (uint8_t *)malloc(sizeof(uint8_t));
     uint8_t *reg_mon = (uint8_t *)malloc(sizeof(uint8_t));
     uint8_t *reg_year = (uint8_t *)malloc(sizeof(uint8_t));
+
+    xSemaphoreTake(i2c0_mutex, portMAX_DELAY);
+
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, RV3029_CHIP_ADDR << 1 | WRITE_BIT, ACK_CHECK_EN);
     i2c_master_write_byte(cmd, RV3029_DATE_ADDR, ACK_CHECK_EN);
     i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+    ret = i2c_master_cmd_begin(i2c_num, cmd,
+                               BOARD_DRIVER_I2C0_TIMEOUT_MS / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
     if (ret != ESP_OK) {
-        free(reg_day);
-        free(reg_weekday);
-        free(reg_mon);
-        free(reg_year);
-        return ret;
+        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(ret), __LINE__);
+        goto _end;
     }
-
-    vTaskDelay(30 / portTICK_RATE_MS);
 
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
@@ -473,24 +485,25 @@ esp_err_t i2c_RV3029_readDay(i2c_port_t i2c_num, unsigned int *buffer) {
     i2c_master_read(cmd, reg_mon, 1, ACK_VAL);
     i2c_master_read(cmd, reg_year, 1, NACK_VAL);
     i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+    ret = i2c_master_cmd_begin(i2c_num, cmd,
+                               BOARD_DRIVER_I2C0_TIMEOUT_MS / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
     if (ret != ESP_OK) {
-        free(reg_day);
-        free(reg_weekday);
-        free(reg_mon);
-        free(reg_year);
-        return ret;
+        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(ret), __LINE__);
+        goto _end;
     }
     time_day = ((*reg_day & 0x3F) >> 4) * 10 + (0xf & (*reg_day & 0x3F));
     time_mon = ((*reg_mon & 0x1F) >> 4) * 10 + (0xf & (*reg_mon & 0x1F));
     time_year = ((*reg_year & 0x7F) >> 4) * 10 + (0xf & (*reg_year & 0x7F));
     // ESP_LOGE(TAG, "I2C RTC Read:%d %d %d", time_year, time_mon, time_day);
     *buffer = time_day + time_mon * 100 + (time_year + 2000) * 10000;
+
+_end:
     free(reg_day);
     free(reg_weekday);
     free(reg_mon);
     free(reg_year);
+    xSemaphoreGive(i2c0_mutex);
     return ret;
 }
 
@@ -498,6 +511,9 @@ esp_err_t i2c_RV3029_writeDay(i2c_port_t i2c_num, int time_year, int time_mon,
                               int time_day, int time_weekday) {
     esp_err_t ret;
     i2c_cmd_handle_t cmd;
+
+    xSemaphoreTake(i2c0_mutex, portMAX_DELAY);
+
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, RV3029_CHIP_ADDR << 1 | WRITE_BIT, ACK_CHECK_EN);
@@ -507,14 +523,16 @@ esp_err_t i2c_RV3029_writeDay(i2c_port_t i2c_num, int time_year, int time_mon,
     i2c_master_write_byte(cmd, time_mon, ACK_CHECK_EN);
     i2c_master_write_byte(cmd, time_year, ACK_CHECK_EN);
     i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+    ret = i2c_master_cmd_begin(i2c_num, cmd,
+                               BOARD_DRIVER_I2C0_TIMEOUT_MS / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
+
     if (ret != ESP_OK) {
-        return ret;
+        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(ret), __LINE__);
     }
 
-    // ESP_LOGE(TAG, "I2C RTC Write:%x %x %x %x", time_year, time_mon, time_day,
-    // time_weekday);
+    xSemaphoreGive(i2c0_mutex);
+
     return ret;
 }
 
@@ -522,6 +540,9 @@ esp_err_t i2c_BCT3253_writeREG(i2c_port_t i2c_num, int offset_address,
                                int value) {
     esp_err_t ret;
     i2c_cmd_handle_t cmd;
+
+    xSemaphoreTake(i2c0_mutex, portMAX_DELAY);
+
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, BCT3253_CHIP_ADDR << 1 | WRITE_BIT,
@@ -529,11 +550,16 @@ esp_err_t i2c_BCT3253_writeREG(i2c_port_t i2c_num, int offset_address,
     i2c_master_write_byte(cmd, offset_address, ACK_CHECK_EN);
     i2c_master_write_byte(cmd, value, ACK_CHECK_EN);
     i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+    ret = i2c_master_cmd_begin(i2c_num, cmd,
+                               BOARD_DRIVER_I2C0_TIMEOUT_MS / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
+
     if (ret != ESP_OK) {
-        return ret;
+        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(ret), __LINE__);
     }
+
+    xSemaphoreGive(i2c0_mutex);
+
     return ret;
 }
 
@@ -541,6 +567,9 @@ esp_err_t i2c_MCP23016_writeREG(i2c_port_t i2c_num, uint8_t offset_address,
                                 uint8_t value) {
     esp_err_t ret;
     i2c_cmd_handle_t cmd;
+
+    xSemaphoreTake(i2c0_mutex, portMAX_DELAY);
+
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, MCP23016_CHIP_ADDR << 1 | WRITE_BIT,
@@ -548,11 +577,16 @@ esp_err_t i2c_MCP23016_writeREG(i2c_port_t i2c_num, uint8_t offset_address,
     i2c_master_write_byte(cmd, offset_address, ACK_CHECK_EN);
     i2c_master_write_byte(cmd, value, ACK_CHECK_EN);
     i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+    ret = i2c_master_cmd_begin(i2c_num, cmd,
+                               BOARD_DRIVER_I2C0_TIMEOUT_MS / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
+
     if (ret != ESP_OK) {
-        return ret;
+        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(ret), __LINE__);
     }
+
+    xSemaphoreGive(i2c0_mutex);
+
     return ret;
 }
 
@@ -560,29 +594,39 @@ esp_err_t i2c_MCP23016_readREG(i2c_port_t i2c_num, uint8_t offset_address,
                                uint8_t *buffer) {
     esp_err_t ret;
     i2c_cmd_handle_t cmd;
+
+    xSemaphoreTake(i2c0_mutex, portMAX_DELAY);
+
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, MCP23016_CHIP_ADDR << 1 | WRITE_BIT,
                           ACK_CHECK_EN);
     i2c_master_write_byte(cmd, offset_address, ACK_CHECK_EN);
     i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+    ret = i2c_master_cmd_begin(i2c_num, cmd,
+                               BOARD_DRIVER_I2C0_TIMEOUT_MS / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
     if (ret != ESP_OK) {
-        return ret;
+        ESP_LOGE(TAG, "error: %s[%d] L%d", esp_err_to_name(ret), ret, __LINE__);
+        goto _end;
     }
-    vTaskDelay(30 / portTICK_RATE_MS);
+
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, MCP23016_CHIP_ADDR << 1 | READ_BIT,
                           ACK_CHECK_EN);
     i2c_master_read(cmd, buffer, 1, NACK_VAL);
     i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+    ret = i2c_master_cmd_begin(i2c_num, cmd,
+                               BOARD_DRIVER_I2C0_TIMEOUT_MS / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
     if (ret != ESP_OK) {
-        return ret;
+        ESP_LOGE(TAG, "error: %s[%d] L%d", esp_err_to_name(ret), ret, __LINE__);
+        goto _end;
     }
+
+_end:
+    xSemaphoreGive(i2c0_mutex);
     return ret;
 }
 
@@ -592,20 +636,21 @@ esp_err_t i2c_mcp3221_readADC(i2c_port_t i2c_num, unsigned int *buffer) {
     uint8_t value_lo;
     i2c_cmd_handle_t cmd;
 
+    xSemaphoreTake(i2c0_mutex, portMAX_DELAY);
+
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, MCP3221_CHIP_ADDR << 1 | WRITE_BIT,
                           ACK_CHECK_EN);
     i2c_master_write_byte(cmd, MCP3221_DATA_ADDR, ACK_CHECK_EN);
     i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+    ret = i2c_master_cmd_begin(i2c_num, cmd,
+                               BOARD_DRIVER_I2C0_TIMEOUT_MS / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(ret), __LINE__);
-        return ret;
+        goto _end;
     }
-
-    // vTaskDelay(30 / portTICK_RATE_MS); // TODO: chekc datasheet
 
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
@@ -613,15 +658,20 @@ esp_err_t i2c_mcp3221_readADC(i2c_port_t i2c_num, unsigned int *buffer) {
     i2c_master_read(cmd, &value_hi, 1, ACK_VAL);
     i2c_master_read(cmd, &value_lo, 1, NACK_VAL);
     i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+    ret = i2c_master_cmd_begin(i2c_num, cmd,
+                               BOARD_DRIVER_I2C0_TIMEOUT_MS / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(ret), __LINE__);
-        return ret;
+        goto _end;
     }
     (*buffer) = (unsigned int)((((unsigned int)value_hi) << 8) | (value_lo));
 
     ESP_LOGD(TAG, "I2C ADC Read:%x %x %d", value_hi, value_lo, (*buffer));
+
+_end:
+    xSemaphoreGive(i2c0_mutex);
+    return ret;
 
     return ret;
 }
@@ -651,6 +701,9 @@ esp_err_t board_get_weight(uint8_t repeat, float *adc, float *g) {
 
     for (uint8_t i = 0; i < repeat; ++i) {
         err |= i2c_mcp3221_readADC(I2C_MASTER_NUM, &adc_tmp);
+        if (err != ESP_OK) {
+            continue;
+        }
         adc_sum += adc_tmp;
     };
 
@@ -673,9 +726,13 @@ esp_err_t board_set_pir_pwr(bool enable) {
 bool board_get_pir_status(void) { return (bool)gpio_get_level(GPIO_INPUT_PIR); }
 
 bool board_get_key_status(void) {
-    uint8_t port_val;
+    uint8_t port_val = 0;
 
-    i2c_MCP23016_readREG(I2C_MASTER_NUM, MCP23016_GPIO1_ADDR, &port_val);
+    if (i2c_MCP23016_readREG(I2C_MASTER_NUM, MCP23016_GPIO1_ADDR, &port_val) !=
+        ESP_OK) {
+        ESP_LOGE(TAG, "MCP23016 read failed port_val[0x%02x]", port_val);
+        return false;
+    }
 
     ESP_LOGD(TAG, "port_val: 0x%X\n", port_val);
 
@@ -751,6 +808,8 @@ esp_err_t board_led_ctrl(led_type_e led, bool enable) {
 
 esp_err_t board_init(void) {
     esp_err_t esp_err;
+
+    i2c0_mutex = xSemaphoreCreateMutex();
     esp_err = board_cam_init();
     esp_err |= board_driver_init();
 
