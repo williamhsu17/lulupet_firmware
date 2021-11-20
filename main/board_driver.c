@@ -765,7 +765,7 @@ bool board_get_key_status(void) {
 
     if (i2c_MCP23016_readREG(I2C_MASTER_NUM, MCP23016_GPIO1_ADDR, &port_val) !=
         ESP_OK) {
-        ESP_LOGE(TAG, "MCP23016 read failed port_val[0x%02x]", port_val);
+        ESP_LOGD(TAG, "MCP23016 read failed port_val[0x%02x]", port_val);
         return false;
     }
 
