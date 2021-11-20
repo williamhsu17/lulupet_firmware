@@ -62,7 +62,7 @@ static esp_err_t board_cam_init(void);
 static esp_err_t board_ioe_output_en(uint8_t port, uint8_t pin,
                                      gpio_output_level_e level) {
     uint8_t port_addr;
-    uint8_t latch_addr;
+    // uint8_t latch_addr;
     uint8_t port_val;
     // uint8_t latch_val;
     esp_err_t esp_err;
