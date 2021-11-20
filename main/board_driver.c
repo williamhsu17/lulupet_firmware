@@ -64,35 +64,60 @@ static esp_err_t board_ioe_output_en(uint8_t port, uint8_t pin,
     uint8_t port_addr;
     uint8_t latch_addr;
     uint8_t port_val;
-    uint8_t latch_val;
+    // uint8_t latch_val;
+    esp_err_t esp_err;
 
     if (port == 0) {
         port_addr = MCP23016_GPIO0_ADDR;
-        latch_addr = MCP23016_OLAT0_ADDR;
+        // latch_addr = MCP23016_OLAT0_ADDR;
     } else if (port == 1) {
         port_addr = MCP23016_GPIO1_ADDR;
-        latch_addr = MCP23016_OLAT1_ADDR;
+        // latch_addr = MCP23016_OLAT1_ADDR;
     } else {
         return ESP_FAIL;
     }
 
-    i2c_MCP23016_readREG(I2C_MASTER_NUM, port_addr, &port_val);
-    i2c_MCP23016_readREG(I2C_MASTER_NUM, latch_addr, &latch_val);
-    ESP_LOGD(TAG, "rd ioe_port%d: 0x%02X", port, port_val);
-    ESP_LOGD(TAG, "rd ioe_latch%d: 0x%02X", port, latch_val);
+    for (int retry = 0; retry < 3; ++retry) {
+        esp_err = i2c_MCP23016_readREG(I2C_MASTER_NUM, port_addr, &port_val);
+        // esp_err |= i2c_MCP23016_readREG(I2C_MASTER_NUM, latch_addr,
+        // &latch_val);
+        ESP_LOGI(TAG, "rd ioe_port%d: 0x%02X", port, port_val);
+        // ESP_LOGD(TAG, "rd ioe_latch%d: 0x%02X", port, latch_val);
+
+        if (esp_err == ESP_OK) {
+            break;
+        } else {
+            ESP_LOGE(TAG, "err: retry[%d] get port[%d] pin[%d] level[%d] L%d",
+                     retry, port, pin, level, __LINE__);
+        }
+    }
+
+    if (esp_err != ESP_OK) {
+        return esp_err;
+    }
 
     if (level) {
         BIT_SET(port_val, pin);
-        BIT_SET(latch_val, pin);
+        // BIT_SET(latch_val, pin);
     } else {
         BIT_CLEAR(port_val, pin);
-        BIT_CLEAR(latch_val, pin);
+        // BIT_CLEAR(latch_val, pin);
     }
 
-    ESP_LOGD(TAG, "wr ioe_port%d: 0x%02X", port, port_val);
-    ESP_LOGD(TAG, "wr ioe_latch%d: 0x%02X", port, latch_val);
-    i2c_MCP23016_writeREG(I2C_MASTER_NUM, port_addr, port_val);
-    i2c_MCP23016_writeREG(I2C_MASTER_NUM, latch_addr, latch_val);
+    for (int retry = 0; retry < 3; ++retry) {
+        ESP_LOGI(TAG, "wr ioe_port%d: 0x%02X", port, port_val);
+        // ESP_LOGD(TAG, "wr ioe_latch%d: 0x%02X", port, latch_val);
+        esp_err = i2c_MCP23016_writeREG(I2C_MASTER_NUM, port_addr, port_val);
+        // esp_err |= i2c_MCP23016_writeREG(I2C_MASTER_NUM, latch_addr,
+        // latch_val);
+
+        if (esp_err == ESP_OK) {
+            break;
+        } else {
+            ESP_LOGE(TAG, "err: retry[%d] set port[%d] pin[%d] level[%d] L%d",
+                     retry, port, pin, level, __LINE__);
+        }
+    }
 
     return ESP_OK;
 }
@@ -340,11 +365,11 @@ static esp_err_t board_cam_init(void) {
     // init with high specs to pre-allocate larger buffers
     config.frame_size = FRAMESIZE_XGA;
     config.jpeg_quality = 12;
-    config.fb_count = CAM_RING_BUF_SIZE + 1;
-    config.grab_mode =
-        CAMERA_GRAB_LATEST; // Note: that will cause ota failed: Guru Meditation
-                            // Error: Core  0 panic'ed (Cache disabled but
-                            // cached memory region accessed)
+    config.fb_count = CAM_RING_BUF_SIZE;
+    config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+    // CAMERA_GRAB_LATEST; // Note: that will cause ota failed: Guru Meditation
+    // Error: Core  0 panic'ed (Cache disabled but
+    // cached memory region accessed)
 
     // camera init
     err = esp_camera_init(&config);
@@ -582,7 +607,7 @@ esp_err_t i2c_MCP23016_writeREG(i2c_port_t i2c_num, uint8_t offset_address,
     i2c_cmd_link_delete(cmd);
 
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "err: %s L%d", esp_err_to_name(ret), __LINE__);
+        ESP_LOGD(TAG, "err: %s L%d", esp_err_to_name(ret), __LINE__);
     }
 
     xSemaphoreGive(i2c0_mutex);
@@ -607,7 +632,7 @@ esp_err_t i2c_MCP23016_readREG(i2c_port_t i2c_num, uint8_t offset_address,
                                BOARD_DRIVER_I2C0_TIMEOUT_MS / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "error: %s[%d] L%d", esp_err_to_name(ret), ret, __LINE__);
+        ESP_LOGD(TAG, "error: %s[%d] L%d", esp_err_to_name(ret), ret, __LINE__);
         goto _end;
     }
 
@@ -621,7 +646,7 @@ esp_err_t i2c_MCP23016_readREG(i2c_port_t i2c_num, uint8_t offset_address,
                                BOARD_DRIVER_I2C0_TIMEOUT_MS / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "error: %s[%d] L%d", esp_err_to_name(ret), ret, __LINE__);
+        ESP_LOGD(TAG, "error: %s[%d] L%d", esp_err_to_name(ret), ret, __LINE__);
         goto _end;
     }
 
@@ -686,9 +711,19 @@ esp_err_t board_set_rgb_led(bool r, bool g, bool b) {
     board_cb.rgb_led[LED_TYPE_B].curr_val =
         (b) ? RGB_LED_ON_VAL : RGB_LED_OFF_VAL;
 
-    for (int i = 0; i < sizeof(reg_led_cb) / sizeof(reg_led_cb[0]); ++i) {
-        err |= i2c_BCT3253_writeREG(I2C_MASTER_NUM, board_cb.rgb_led[i].address,
-                                    board_cb.rgb_led[i].curr_val);
+    for (int retry = 0; retry < 3; ++retry) {
+        err = ESP_OK;
+        for (int i = 0; i < sizeof(reg_led_cb) / sizeof(reg_led_cb[0]); ++i) {
+            err |= i2c_BCT3253_writeREG(I2C_MASTER_NUM,
+                                        board_cb.rgb_led[i].address,
+                                        board_cb.rgb_led[i].curr_val);
+        }
+        if (err == ESP_OK) {
+            break;
+        } else {
+            ESP_LOGE(TAG, "err: retry[%d] set r[%d] g[%d] b[%d] L%d", retry, r,
+                     g, b, __LINE__);
+        }
     }
 
     return err;
@@ -745,7 +780,7 @@ bool board_get_key_status(void) {
 }
 
 esp_err_t board_led_ctrl(led_type_e led, bool enable) {
-    ESP_LOGD(TAG, "led: %d, enable: %d", led, enable);
+    ESP_LOGI(TAG, "led: %d, enable: %d", led, enable);
 
     switch (led) {
     case LED_TYPE_W:
