@@ -241,8 +241,11 @@ static void weight_fsm_check_jump(void) {
         ++task_data.jump_cnt;
 
         if ((w_task_cb.now_weight_g - w_task_cb.ref_weight_g) <
-                (0.5 * w_task_cb.conf.jump_cat_weight_g) &&
-            !w_task_cb.pir_level) {
+                (0.5 * w_task_cb.conf.jump_cat_weight_g)
+#if (FUNC_WEIGHT_JUMP_CHECK_PIR)
+            && !w_task_cb.pir_level
+#endif
+        ) {
             task_data.jump_to_bigjump_cnt = 0;
             ++task_data.jump_to_standby_cnt;
             ESP_LOGI(TAG, "jump_to_standby_cnt: %d",
@@ -250,8 +253,11 @@ static void weight_fsm_check_jump(void) {
             if (task_data.jump_to_standby_cnt == task_data.jump_to_standby_num)
                 weight_fsm_goto_standby();
         } else if ((w_task_cb.now_weight_g - w_task_cb.ref_weight_g) >=
-                       (0.5 * w_task_cb.conf.jump_cat_weight_g) &&
-                   w_task_cb.pir_level) {
+                       (0.5 * w_task_cb.conf.jump_cat_weight_g)
+#if (FUNC_WEIGHT_JUMP_CHECK_PIR)
+                   && w_task_cb.pir_level
+#endif
+        ) {
             task_data.jump_to_standby_cnt = 0;
             ++task_data.jump_to_bigjump_cnt;
             ESP_LOGI(TAG, "jump_to_bigjump_cnt: %d",

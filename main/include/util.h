@@ -238,6 +238,8 @@ extern "C" {
     0 // 1: nvs will be earesd during bootup for debugging blufi process
 #define FUNC_PHOTO_RINGBUFFER 1 // 1: photo will be saved when wifi dosconnected
 #define FUNC_KEY_EVENT 0
+#define FUNC_WEIGHT_JUMP_CHECK_PIR                                             \
+    0 // weight_fsm_check_jump 0:without/1:with PIR
 
 // Testing firmware default value
 #if 1
