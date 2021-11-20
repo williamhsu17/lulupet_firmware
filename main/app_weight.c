@@ -219,8 +219,6 @@ static void weight_fsm_check_standby(void) {
 
 static void weight_fsm_goto_standby(void) {
     // action
-    board_led_ctrl(LED_TYPE_BD_W, false); // turn off W led
-    board_led_ctrl(LED_TYPE_IR, false);   // turn off IR led
     task_data.weight_pause_times = 0;
     task_data.period_ms = w_task_cb.conf.standby_period_ms;
     task_data.ref_adc_exec = true;
@@ -300,7 +298,6 @@ static void weight_fsm_check_bigjump(void) {
 
 static void weight_fsm_goto_bigjump(void) {
     // action
-    board_led_ctrl(LED_TYPE_IR, true); // turn on IR led
     task_data.period_ms = w_task_cb.conf.bigjump_period_ms;
     task_data.period_cnt = 0;
     weight_post_event(task_data.evt_loop, w_task_cb.now_weight_g,
@@ -331,7 +328,6 @@ static void weight_fsm_check_postevent(void) {
 
 static void weight_fsm_goto_postevent(void) {
     // action
-    board_led_ctrl(LED_TYPE_BD_W, true); // turn on W led
     task_data.postevnet_num = w_task_cb.conf.postevnet_chk;
     task_data.postevnet_cnt = 0;
     task_data.period_ms = w_task_cb.conf.postevent_period_ms;
