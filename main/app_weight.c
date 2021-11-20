@@ -67,6 +67,7 @@ typedef struct {
 
     uint32_t period_ms;
     uint32_t period_cnt;
+    uint32_t big_jump_period_cnt;
 
     esp_event_loop_handle_t evt_loop;
     SemaphoreHandle_t cali_data_mutex;
@@ -294,12 +295,22 @@ static void weight_fsm_check_bigjump(void) {
         weight_fsm_goto_postevent();
     }
     ++task_data.period_cnt;
+
+    // every FUNC_WEIGHT_BIGJUMP_SEND_PHOTO_PERIOD_MS to send photo to backend
+    ++task_data.big_jump_period_cnt;
+    if ((task_data.big_jump_period_cnt * w_task_cb.conf.bigjump_period_ms) >
+        FUNC_WEIGHT_BIGJUMP_SEND_PHOTO_PERIOD_MS) {
+        task_data.big_jump_period_cnt = 0;
+        weight_post_event(task_data.evt_loop, w_task_cb.now_weight_g,
+                          RAWDATA_EVENTID_CAT_IN);
+    }
 }
 
 static void weight_fsm_goto_bigjump(void) {
     // action
     task_data.period_ms = w_task_cb.conf.bigjump_period_ms;
     task_data.period_cnt = 0;
+    task_data.big_jump_period_cnt = 0;
     weight_post_event(task_data.evt_loop, w_task_cb.now_weight_g,
                       RAWDATA_EVENTID_CAT_IN);
 
