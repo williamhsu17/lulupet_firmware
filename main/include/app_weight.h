@@ -59,6 +59,7 @@ typedef struct {
 typedef struct {
     rawdata_eventid eventid;
     int weight_g;
+    int ref_weight_g;
     int pir_val;
 } weight_take_photo_event_t;
 

@@ -67,6 +67,7 @@ typedef struct {
 
     uint32_t period_ms;
     uint32_t period_cnt;
+    uint32_t big_jump_period_cnt;
 
     esp_event_loop_handle_t evt_loop;
     SemaphoreHandle_t cali_data_mutex;
@@ -81,7 +82,7 @@ weight_task_cb w_task_cb;
 
 // static function prototype
 static void weight_post_event(esp_event_loop_handle_t event_loop, float weight,
-                              rawdata_eventid eventid);
+                              float ref_weight, rawdata_eventid eventid);
 static float weight_calculate_internal(float adc, float weight_coefficeint);
 static void weight_get(void);
 static void weight_fsm_check_start(void);
@@ -107,11 +108,12 @@ static esp_err_t esp_err_print(esp_err_t esp_err, const char *file,
 #endif
 
 static void weight_post_event(esp_event_loop_handle_t event_loop, float weight,
-                              rawdata_eventid eventid) {
+                              float ref_weight, rawdata_eventid eventid) {
 
     weight_take_photo_event_t evt;
     evt.eventid = eventid;
     evt.weight_g = (int)weight;
+    evt.ref_weight_g = (int)ref_weight;
     evt.pir_val = w_task_cb.pir_level;
 
     ESP_LOGW(TAG,
@@ -219,8 +221,6 @@ static void weight_fsm_check_standby(void) {
 
 static void weight_fsm_goto_standby(void) {
     // action
-    board_led_ctrl(LED_TYPE_BD_W, false); // turn off W led
-    board_led_ctrl(LED_TYPE_IR, false);   // turn off IR led
     task_data.weight_pause_times = 0;
     task_data.period_ms = w_task_cb.conf.standby_period_ms;
     task_data.ref_adc_exec = true;
@@ -241,8 +241,11 @@ static void weight_fsm_check_jump(void) {
         ++task_data.jump_cnt;
 
         if ((w_task_cb.now_weight_g - w_task_cb.ref_weight_g) <
-                (0.5 * w_task_cb.conf.jump_cat_weight_g) &&
-            !w_task_cb.pir_level) {
+                (0.5 * w_task_cb.conf.jump_cat_weight_g)
+#if (FUNC_WEIGHT_JUMP_CHECK_PIR)
+            && !w_task_cb.pir_level
+#endif
+        ) {
             task_data.jump_to_bigjump_cnt = 0;
             ++task_data.jump_to_standby_cnt;
             ESP_LOGI(TAG, "jump_to_standby_cnt: %d",
@@ -250,8 +253,11 @@ static void weight_fsm_check_jump(void) {
             if (task_data.jump_to_standby_cnt == task_data.jump_to_standby_num)
                 weight_fsm_goto_standby();
         } else if ((w_task_cb.now_weight_g - w_task_cb.ref_weight_g) >=
-                       (0.5 * w_task_cb.conf.jump_cat_weight_g) &&
-                   w_task_cb.pir_level) {
+                       (0.5 * w_task_cb.conf.jump_cat_weight_g)
+#if (FUNC_WEIGHT_JUMP_CHECK_PIR)
+                   && w_task_cb.pir_level
+#endif
+        ) {
             task_data.jump_to_standby_cnt = 0;
             ++task_data.jump_to_bigjump_cnt;
             ESP_LOGI(TAG, "jump_to_bigjump_cnt: %d",
@@ -290,15 +296,26 @@ static void weight_fsm_check_bigjump(void) {
         weight_fsm_goto_postevent();
     }
     ++task_data.period_cnt;
+
+    // every FUNC_WEIGHT_BIGJUMP_SEND_PHOTO_PERIOD_MS to send photo to backend
+    ++task_data.big_jump_period_cnt;
+    if ((task_data.big_jump_period_cnt * w_task_cb.conf.bigjump_period_ms) >
+        FUNC_WEIGHT_BIGJUMP_SEND_PHOTO_PERIOD_MS) {
+        task_data.big_jump_period_cnt = 0;
+        weight_post_event(task_data.evt_loop,
+                          (w_task_cb.now_weight_g - w_task_cb.ref_weight_g),
+                          w_task_cb.ref_weight_g, RAWDATA_EVENTID_CAT_IN);
+    }
 }
 
 static void weight_fsm_goto_bigjump(void) {
     // action
-    board_led_ctrl(LED_TYPE_IR, true); // turn on IR led
     task_data.period_ms = w_task_cb.conf.bigjump_period_ms;
     task_data.period_cnt = 0;
-    weight_post_event(task_data.evt_loop, w_task_cb.now_weight_g,
-                      RAWDATA_EVENTID_CAT_IN);
+    task_data.big_jump_period_cnt = 0;
+    weight_post_event(task_data.evt_loop,
+                      (w_task_cb.now_weight_g - w_task_cb.ref_weight_g),
+                      w_task_cb.ref_weight_g, RAWDATA_EVENTID_CAT_IN);
 
     // fsm change
     task_data.now_fsm = WEIGHT_TASK_STAT_BIGJUMP;
@@ -318,14 +335,13 @@ static void weight_fsm_check_postevent(void) {
                 w_task_cb.conf.bigjump_period_ms); // record cat during time
         weight_post_event(task_data.evt_loop,
                           (w_task_cb.now_weight_g - w_task_cb.ref_weight_g),
-                          RAWDATA_EVENTID_CAT_OUT);
+                          w_task_cb.ref_weight_g, RAWDATA_EVENTID_CAT_OUT);
         weight_fsm_goto_standby();
     }
 }
 
 static void weight_fsm_goto_postevent(void) {
     // action
-    board_led_ctrl(LED_TYPE_BD_W, true); // turn on W led
     task_data.postevnet_num = w_task_cb.conf.postevnet_chk;
     task_data.postevnet_cnt = 0;
     task_data.period_ms = w_task_cb.conf.postevent_period_ms;

@@ -85,6 +85,8 @@ static bool http_photo_buf_get_loop_ram(void);
 static uint8_t http_photo_buf_get_idx_ram(void);
 static bool http_photo_buf_exist_ram(void);
 static void http_photo_buf_init(void);
+static esp_err_t take_photo(camera_fb_t **fb, rawdata_eventid event,
+                            uint32_t delay_ms);
 
 static void httpc_task(void *pvParameter);
 
@@ -103,12 +105,13 @@ static void httpc_loop_event_handler(void *arg, esp_event_base_t base,
         memcpy(&task_conf.weight_take_photo_evt,
                (weight_take_photo_event_t *)event_data,
                sizeof(weight_take_photo_event_t));
-        ESP_LOGW(
-            TAG,
-            "weight_take_photo_event recv: weight[%d g] pir[%d] eventid[%d]",
-            task_conf.weight_take_photo_evt.weight_g,
-            task_conf.weight_take_photo_evt.pir_val,
-            task_conf.weight_take_photo_evt.eventid);
+        ESP_LOGW(TAG,
+                 "weight_take_photo_event recv: weight[%d g] ref_weight[%d g] "
+                 "pir[%d] eventid[%d]",
+                 task_conf.weight_take_photo_evt.weight_g,
+                 task_conf.weight_take_photo_evt.ref_weight_g,
+                 task_conf.weight_take_photo_evt.pir_val,
+                 task_conf.weight_take_photo_evt.eventid);
         task_conf.weight_event_update = true;
         break;
     case LULUPET_EVENT_OTA:
@@ -347,10 +350,12 @@ http_post_rawdata(esp_http_client_handle_t client, char *json_url_val,
     }
 
     snprintf(post_data_raw, HTTP_POST_RAW_DATA_LEN,
-             "lid=%s&token=%s&eventid=%d&weight=%d&pir=%d&pic=%s&tt=%ld",
+             "lid=%s&token=%s&eventid=%d&weight=%d&reference_weight=%d&pir=%d&"
+             "pic=%s&tt=%ld",
              app_wifi_get_lid(), app_wifi_get_token(),
              take_photo_event->eventid, take_photo_event->weight_g,
-             take_photo_event->pir_val, json_url_val, timestamp);
+             take_photo_event->ref_weight_g, take_photo_event->pir_val,
+             json_url_val, timestamp);
     ESP_LOGI(TAG, "post data:\n%s", post_data_raw);
 
     esp_http_client_set_url(client, HTTP_RAW_DATA_URL);
@@ -836,6 +841,58 @@ static void http_photo_buf_init(void) {
     photo_ring_buf.loop = false;
 }
 
+static esp_err_t take_photo(camera_fb_t **fb, rawdata_eventid event,
+                            uint32_t delay_ms) {
+    switch (event) {
+    case RAWDATA_EVENTID_TEST:
+    case RAWDATA_EVENTID_CAT_OUT:
+        board_led_ctrl(LED_TYPE_BD_W, true); // turn on W led
+        board_led_ctrl(LED_TYPE_IR, true);   // turn on IR led
+        break;
+
+    case RAWDATA_EVENTID_CAT_IN:
+        board_led_ctrl(LED_TYPE_IR, true); // turn on IR led
+        break;
+
+    default:
+        ESP_LOGE(TAG, "not support event[%d] L%d", event, __LINE__);
+        break;
+    }
+
+    for (int d_idx = 0; d_idx < CAM_RING_BUF_SIZE; ++d_idx) {
+        camera_fb_t *fb = esp_camera_fb_get();
+        esp_camera_fb_return(fb);
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+    esp_err_t esp_err;
+
+    esp_err = camera_take_photo(fb);
+    if (esp_err != ESP_OK) {
+        ESP_LOGE(TAG, "err: %s[%d] L%d", esp_err_to_name(esp_err), esp_err,
+                 __LINE__);
+        return esp_err;
+    }
+
+    switch (event) {
+    case RAWDATA_EVENTID_TEST:
+    case RAWDATA_EVENTID_CAT_OUT:
+        board_led_ctrl(LED_TYPE_BD_W, false); // turn off W led
+        board_led_ctrl(LED_TYPE_IR, false);   // turn off IR led
+        break;
+
+    case RAWDATA_EVENTID_CAT_IN:
+        board_led_ctrl(LED_TYPE_IR, false); // turn off IR led
+        break;
+
+    default:
+        ESP_LOGE(TAG, "not support event[%d] L%d", event, __LINE__);
+        break;
+    }
+
+    return esp_err;
+}
+
 static bool http_photo_buf_exist_fs(void) { return fs_check_photo_cfg_exist(); }
 
 static void save_timeval_into_nvs(void) {
@@ -938,6 +995,7 @@ static void first_connect_to_wifi(void) {
     event.eventid = RAWDATA_EVENTID_TEST;
     event.pir_val = board_get_pir_status();
     event.weight_g = weight_get_now_weight_int();
+    event.ref_weight_g = weight_get_now_weight_int();
     http_photo_buf_push_ram(&event);
     http_send_photo_process(HTTPC_PHOTO_SRC_RAM);
 }
@@ -1070,12 +1128,11 @@ void http_photo_buf_push_ram(weight_take_photo_event_t *take_photo_event) {
 
     memcpy(&photo_buf->weight_take_photo_evt, take_photo_event,
            sizeof(weight_take_photo_event_t));
+
     photo_buf->unix_timestamp = time(NULL);
-    esp_err_t esp_err = camera_take_photo(&photo_buf->fb);
-    if (esp_err != ESP_OK) {
-#if (FUNC_TESTING_FW)
-        printf("err: take photo failed");
-#endif
+
+    if (take_photo(&photo_buf->fb, take_photo_event->eventid,
+                   FUNC_TAKE_PHOTO_DELAY_MS) != ESP_OK) {
         return;
     }
 
@@ -1083,9 +1140,6 @@ void http_photo_buf_push_ram(weight_take_photo_event_t *take_photo_event) {
         ESP_LOGE(TAG, "camera use the %d format",
                  photo_buf->fb->format); // TODO: record into fetal error nvs
         esp_camera_fb_return(photo_buf->fb);
-#if (FUNC_TESTING_FW)
-        printf("err: photo format failed");
-#endif
         return;
     }
 
@@ -1105,7 +1159,11 @@ void http_photo_buf_push_fs(weight_take_photo_event_t *take_photo_event) {
     ESP_LOGI(TAG, "%s start", __func__);
     ESP_LOGI(TAG, "sizeof(camera_fb_t): %d", sizeof(camera_fb_t));
     unix_timestamp = time(NULL);
-    camera_take_photo(&fb);
+
+    if (take_photo(&fb, take_photo_event->eventid, FUNC_TAKE_PHOTO_DELAY_MS) !=
+        ESP_OK) {
+        return;
+    }
     if (fb->format != PIXFORMAT_JPEG) {
         ESP_LOGE(TAG, "camera use the %d format",
                  fb->format); // TODO: record into fetal error nvs
@@ -1162,6 +1220,7 @@ void http_send_photo_process(httpc_photo_source_e photo_src) {
                     photo_buf_ram = http_photo_buf_pop_ram(i);
                     http_send_photo_buf(photo_buf_ram, client, json_url_val,
                                         JSON_URL_VAL_LEN);
+                    camera_return_photo(&photo_buf_ram->fb);
                 }
             }
             for (int i = 0; i < buf_start_idx; ++i) {
@@ -1169,6 +1228,7 @@ void http_send_photo_process(httpc_photo_source_e photo_src) {
                 photo_buf_ram = http_photo_buf_pop_ram(i);
                 http_send_photo_buf(photo_buf_ram, client, json_url_val,
                                     JSON_URL_VAL_LEN);
+                camera_return_photo(&photo_buf_ram->fb);
             }
         }
     }
