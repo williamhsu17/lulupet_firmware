@@ -40,7 +40,7 @@ extern "C" {
 #define CAMERA_FRAME_SIZE FRAMESIZE_XGA
 
 #define ESP_INTR_FLAG_DEFAULT 0
-#define CAM_RING_BUF_SIZE 4
+#define CAM_RING_BUF_SIZE 2
 
 #if CONFIG_CAMERA_MODEL_WROVER_KIT
 #define PWDN_GPIO_NUM -1
@@ -240,6 +240,9 @@ extern "C" {
 #define FUNC_KEY_EVENT 0
 #define FUNC_WEIGHT_JUMP_CHECK_PIR                                             \
     0 // weight_fsm_check_jump 0:without/1:with PIR
+#define FUNC_WEIGHT_BIGJUMP_SEND_PHOTO_PERIOD_MS 3000
+
+#define FUNC_TAKE_PHOTO_DELAY_MS 300
 
 // Testing firmware default value
 #if 1
