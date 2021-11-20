@@ -105,12 +105,13 @@ static void httpc_loop_event_handler(void *arg, esp_event_base_t base,
         memcpy(&task_conf.weight_take_photo_evt,
                (weight_take_photo_event_t *)event_data,
                sizeof(weight_take_photo_event_t));
-        ESP_LOGW(
-            TAG,
-            "weight_take_photo_event recv: weight[%d g] pir[%d] eventid[%d]",
-            task_conf.weight_take_photo_evt.weight_g,
-            task_conf.weight_take_photo_evt.pir_val,
-            task_conf.weight_take_photo_evt.eventid);
+        ESP_LOGW(TAG,
+                 "weight_take_photo_event recv: weight[%d g] ref_weight[%d g] "
+                 "pir[%d] eventid[%d]",
+                 task_conf.weight_take_photo_evt.weight_g,
+                 task_conf.weight_take_photo_evt.ref_weight_g,
+                 task_conf.weight_take_photo_evt.pir_val,
+                 task_conf.weight_take_photo_evt.eventid);
         task_conf.weight_event_update = true;
         break;
     case LULUPET_EVENT_OTA:
@@ -349,10 +350,12 @@ http_post_rawdata(esp_http_client_handle_t client, char *json_url_val,
     }
 
     snprintf(post_data_raw, HTTP_POST_RAW_DATA_LEN,
-             "lid=%s&token=%s&eventid=%d&weight=%d&pir=%d&pic=%s&tt=%ld",
+             "lid=%s&token=%s&eventid=%d&weight=%d&reference_weight=%d&pir=%d&"
+             "pic=%s&tt=%ld",
              app_wifi_get_lid(), app_wifi_get_token(),
              take_photo_event->eventid, take_photo_event->weight_g,
-             take_photo_event->pir_val, json_url_val, timestamp);
+             take_photo_event->ref_weight_g, take_photo_event->pir_val,
+             json_url_val, timestamp);
     ESP_LOGI(TAG, "post data:\n%s", post_data_raw);
 
     esp_http_client_set_url(client, HTTP_RAW_DATA_URL);
@@ -992,6 +995,7 @@ static void first_connect_to_wifi(void) {
     event.eventid = RAWDATA_EVENTID_TEST;
     event.pir_val = board_get_pir_status();
     event.weight_g = weight_get_now_weight_int();
+    event.ref_weight_g = weight_get_now_weight_int();
     http_photo_buf_push_ram(&event);
     http_send_photo_process(HTTPC_PHOTO_SRC_RAM);
 }

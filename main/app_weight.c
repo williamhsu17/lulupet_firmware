@@ -82,7 +82,7 @@ weight_task_cb w_task_cb;
 
 // static function prototype
 static void weight_post_event(esp_event_loop_handle_t event_loop, float weight,
-                              rawdata_eventid eventid);
+                              float ref_weight, rawdata_eventid eventid);
 static float weight_calculate_internal(float adc, float weight_coefficeint);
 static void weight_get(void);
 static void weight_fsm_check_start(void);
@@ -108,11 +108,12 @@ static esp_err_t esp_err_print(esp_err_t esp_err, const char *file,
 #endif
 
 static void weight_post_event(esp_event_loop_handle_t event_loop, float weight,
-                              rawdata_eventid eventid) {
+                              float ref_weight, rawdata_eventid eventid) {
 
     weight_take_photo_event_t evt;
     evt.eventid = eventid;
     evt.weight_g = (int)weight;
+    evt.ref_weight_g = (int)ref_weight;
     evt.pir_val = w_task_cb.pir_level;
 
     ESP_LOGW(TAG,
@@ -301,8 +302,9 @@ static void weight_fsm_check_bigjump(void) {
     if ((task_data.big_jump_period_cnt * w_task_cb.conf.bigjump_period_ms) >
         FUNC_WEIGHT_BIGJUMP_SEND_PHOTO_PERIOD_MS) {
         task_data.big_jump_period_cnt = 0;
-        weight_post_event(task_data.evt_loop, w_task_cb.now_weight_g,
-                          RAWDATA_EVENTID_CAT_IN);
+        weight_post_event(task_data.evt_loop,
+                          (w_task_cb.now_weight_g - w_task_cb.ref_weight_g),
+                          w_task_cb.ref_weight_g, RAWDATA_EVENTID_CAT_IN);
     }
 }
 
@@ -311,8 +313,9 @@ static void weight_fsm_goto_bigjump(void) {
     task_data.period_ms = w_task_cb.conf.bigjump_period_ms;
     task_data.period_cnt = 0;
     task_data.big_jump_period_cnt = 0;
-    weight_post_event(task_data.evt_loop, w_task_cb.now_weight_g,
-                      RAWDATA_EVENTID_CAT_IN);
+    weight_post_event(task_data.evt_loop,
+                      (w_task_cb.now_weight_g - w_task_cb.ref_weight_g),
+                      w_task_cb.ref_weight_g, RAWDATA_EVENTID_CAT_IN);
 
     // fsm change
     task_data.now_fsm = WEIGHT_TASK_STAT_BIGJUMP;
@@ -332,7 +335,7 @@ static void weight_fsm_check_postevent(void) {
                 w_task_cb.conf.bigjump_period_ms); // record cat during time
         weight_post_event(task_data.evt_loop,
                           (w_task_cb.now_weight_g - w_task_cb.ref_weight_g),
-                          RAWDATA_EVENTID_CAT_OUT);
+                          w_task_cb.ref_weight_g, RAWDATA_EVENTID_CAT_OUT);
         weight_fsm_goto_standby();
     }
 }
