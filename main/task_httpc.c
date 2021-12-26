@@ -963,7 +963,7 @@ static void ota_check(bool force) {
     } else if (ver_major == VERSION_MAJOR) {
         if (ver_minor > VERSION_MINOR) {
             update = true;
-        } else if (ver_minor == VERSION_PATCH) {
+        } else if (ver_minor == VERSION_MINOR) {
             if (ver_patch > VERSION_PATCH) {
                 update = true;
             }
